@@ -1,0 +1,1800 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <title>Life Ownership Prototype v6</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --accent: #38bdf8;
+      --accent-soft: #0f766e;
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
+      --danger: #f97373;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #1f2933, #020617);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #app {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 480px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    header span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    main {
+      flex: 1;
+      padding: 8px 12px 56px;
+      overflow-y: auto;
+    }
+    .card {
+      background: linear-gradient(135deg, #020617, #020617);
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(148,163,184,0.28);
+      box-shadow: 0 16px 30px rgba(15,23,42,0.8);
+    }
+    .card h2 {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .ownership-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .ownership-main {
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .muted {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .tagline {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.4);
+      padding: 3px 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    /* Tabs */
+    .tab-bar {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 6px;
+      width: 100%;
+      max-width: 480px;
+      padding: 4px 10px;
+      z-index: 20;
+    }
+    .tab-inner {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      background: rgba(15,23,42,0.96);
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.35);
+      box-shadow: 0 20px 35px rgba(15,23,42,0.9);
+      padding: 4px;
+    }
+    .tab-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 10px;
+      padding: 4px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .tab-btn span.icon {
+      font-size: 16px;
+    }
+    .tab-btn.active {
+      color: var(--accent);
+      background: rgba(56,189,248,0.10);
+    }
+    /* Calendar */
+    .month-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .month-header button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .month-header-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .weekday-row {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 4px;
+    }
+    .weekday {
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .day-cell {
+      height: 48px;
+      border-radius: 10px;
+      padding: 2px 3px;
+      font-size: 10px;
+      cursor: pointer;
+      position: relative;
+      background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(30,64,175,0.4);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .day-cell.empty {
+      border: none;
+      background: transparent;
+      cursor: default;
+    }
+    .day-number {
+      font-size: 10px;
+      opacity: 0.9;
+    }
+    .day-ownership {
+      font-size: 9px;
+      opacity: 0.9;
+    }
+    .today-outline {
+      outline: 1px solid var(--accent);
+      outline-offset: -1px;
+    }
+    .view-toggle {
+      display: inline-flex;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.5);
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .view-toggle button {
+      border: none;
+      padding: 4px 10px;
+      font-size: 10px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .view-toggle button.active {
+      background: rgba(56,189,248,0.15);
+      color: var(--accent);
+    }
+    /* Day timeline */
+    .day-timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .day-nav-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .category-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+    .category-chip {
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.6);
+      padding: 2px 8px;
+      font-size: 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      color: var(--text-muted);
+    }
+    .category-color-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+    }
+    .category-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(56,189,248,0.12);
+    }
+    .timeline-rows-wrapper {
+      margin-top: 4px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .timeline-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    .timeline-row-label {
+      width: 34px;
+      font-size: 10px;
+      text-align: right;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .timeline-row-bar {
+      flex: 1;
+      border-radius: 10px;
+      background: rgba(15,23,42,0.9);
+      border: 1px solid rgba(30,64,175,0.5);
+      padding: 2px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1px;
+    }
+    .timeline-block {
+      height: 14px;
+      border-radius: 6px;
+      background: rgba(15,23,42,0.9);
+      cursor: pointer;
+    }
+    .timeline-block.active {
+      box-shadow: 0 0 0 1px rgba(15,23,42,0.9);
+    }
+    .range-select-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .range-select-row select {
+      font-size: 10px;
+      padding: 3px 4px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.5);
+      background: #020617;
+      color: var(--text-main);
+    }
+    /* Day detail sheet */
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.65);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 30;
+    }
+    .sheet {
+      background: #020617;
+      width: 100%;
+      max-width: 480px;
+      border-radius: 18px 18px 0 0;
+      padding: 10px 14px 16px;
+      box-shadow: 0 -20px 40px rgba(0,0,0,0.8);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .sheet-handle {
+      width: 40px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148,163,184,0.6);
+      margin: 0 auto 8px;
+    }
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .sheet-header h3 {
+      font-size: 14px;
+    }
+    .sheet-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .field-label {
+      font-size: 11px;
+      margin-top: 6px;
+      margin-bottom: 2px;
+      color: var(--text-muted);
+    }
+    .headline-input,
+    .memo-input {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(148,163,184,0.4);
+      background: #020617;
+      color: var(--text-main);
+      font-size: 11px;
+      resize: vertical;
+    }
+    .headline-input {
+      height: 28px;
+    }
+    .memo-input {
+      min-height: 40px;
+    }
+    .save-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0b1120;
+      font-weight: 600;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid rgba(148,163,184,0.4);
+    }
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="range"] {
+      flex: 1;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    /* Stats & chart */
+    .center-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 24px;
+      line-height: 1.6;
+    }
+    .stats-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .stats-nav-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 120px;
+      margin-top: 8px;
+    }
+    .bar-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 3px;
+    }
+    .bar {
+      width: 70%;
+      border-radius: 6px 6px 0 0;
+      background: #38bdf8;
+    }
+    .bar-label {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .bar-percent {
+      font-size: 9px;
+    }
+    /* Logs */
+    .log-card {
+      cursor: pointer;
+    }
+    .log-headline-input {
+      margin-top: 4px;
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.5);
+      background: #020617;
+      color: var(--text-main);
+      font-size: 11px;
+    }
+    /* Focus timer */
+    .timer-display {
+      font-variant-numeric: tabular-nums;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .timer-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .pomodoro-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .pomodoro-row input {
+      width: 40px;
+      font-size: 11px;
+      padding: 3px 4px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.5);
+      background: #020617;
+      color: var(--text-main);
+    }
+    .focus-label-input {
+      margin-top: 6px;
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.5);
+      background: #020617;
+      color: var(--text-main);
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div>
+        <h1 id="header-title">Calendar</h1>
+        <span id="header-sub">24時間の「使い方」を見える化</span>
+      </div>
+      <span id="header-score" class="muted"></span>
+    </header>
+    <button id="saveButton" class="btn btn-primary" style="margin: 10px 12px; display: block; width: calc(100% - 24px);">
+      ⚡ データをSupabaseに保存（テスト）
+    </button>
+    <main id="main"></main>
+
+    <div class="tab-bar">
+      <div class="tab-inner">
+        <button class="tab-btn" data-tab="today">
+          <span class="icon">☀️</span>
+          <span>Today</span>
+        </button>
+        <button class="tab-btn active" data-tab="calendar">
+          <span class="icon">📅</span>
+          <span>Calendar</span>
+        </button>
+        <button class="tab-btn" data-tab="stats">
+          <span class="icon">📊</span>
+          <span>Stats</span>
+        </button>
+        <button class="tab-btn" data-tab="logs">
+          <span class="icon">📝</span>
+          <span>Logs</span>
+        </button>
+        <button class="tab-btn" data-tab="settings">
+          <span class="icon">⚙️</span>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+<script>
+    // =======================================================
+    // ======== Supabase クライアント初期化 (1/6) - 変更なし ========
+    // =======================================================
+    // あなたのSupabaseプロジェクトのURLとキーを設定済み
+    const SUPABASE_URL = 'https://dkyflkdukxsnqkmvmsuo.supabase.co'; 
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreWZsa2R1a3hzbnFrbXZtc3VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5MDcwMTcsImV4cCI6MjA3OTQ4MzAxN30.Z8mmOFEfDrbIu81QK8_cLDxeznMAIrTpI7Zc2BanBss'; 
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
+    // =======================================================
+
+    const STORAGE_KEY_DAYS = "lifeOwnership_v1_days";
+    const STORAGE_KEY_CATS = "lifeOwnership_v1_categories";
+
+    function ymd(date) {
+      return date.toISOString().slice(0,10);
+    }
+    function stripTime(date) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    // =======================================================
+    // ======== データ読み込み関数 (2/6) - クラウド取得（タイムアウト維持）========
+    // =======================================================
+    /*
+    * Supabaseから全データを取得し、アプリの state.days 形式に変換 (タイムアウト機能付き)
+    */
+    async function fetchDaysFromSupabase() {
+        // タイムアウト設定 (モバイル環境でハングアップ対策)
+        const TIMEOUT_MS = 10000; // 10秒
+
+        // 1. タイムアウト後にrejectされるPromise
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Supabase fetch timeout (10s)')), TIMEOUT_MS)
+        );
+
+        // 2. 実際のSupabaseデータ取得Promise
+        const fetchPromise = async () => {
+            console.log("Supabaseから全データを取得中...");
+            const { data, error } = await supabase
+                .from('daily_logs')
+                .select('log_date, data'); 
+
+            if (error) throw error;
+            return data;
+        };
+
+        try {
+            // 3. タイムアウトとデータ取得の競争 (先に完了した方が採用される)
+            const data = await Promise.race([fetchPromise(), timeoutPromise]);
+
+            if (!data || data.length === 0) {
+                console.log("Supabaseにデータが見つかりませんでした。");
+                return {};
+            }
+
+            const cloudDays = {};
+            data.forEach(row => {
+                // Supabaseの row.data の中身を、state.days の形式（日データオブジェクト全体）として使用
+                cloudDays[row.log_date] = {
+                    ...row.data,
+                    date: row.log_date // 整合性のため date も含める
+                };
+            });
+
+            console.log(`Supabaseから ${data.length} 日分のデータを取得しました。`);
+            return cloudDays;
+
+        } catch (error) {
+            console.error('Supabaseからのデータ取得エラー:', error.message);
+            // タイムアウトまたはエラー時も処理を止めないよう空のオブジェクトを返す
+            return {};
+        }
+    }
+    // =======================================================
+
+    // =======================================================
+    // ======== データ読み込み関数 (3/6) - ローカル読み込み（修正済み）========
+    // =======================================================
+    /*
+    * アプリ起動時にローカルとクラウドからデータを読み込み、マージする
+    */
+    async function loadDays() {
+      let localDays = {};
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_DAYS);
+        if (raw) {
+            localDays = JSON.parse(raw);
+            console.log(`ローカルストレージから ${Object.keys(localDays).length} 日分のデータを読み込みました。`);
+        }
+      } catch (e) {
+        console.error("ローカルデータ読み込みエラー", e);
+      }
+      
+      // クラウドからデータを取得 (タイムアウト処理が内蔵された関数を呼び出し)
+      const cloudDays = await fetchDaysFromSupabase();
+
+      // ローカルデータとクラウドデータをマージ
+      // クラウドデータ（cloudDays）でローカルデータ（localDays）を上書き（新しいデータが優先）
+      const mergedDays = {
+          ...localDays,
+          ...cloudDays
+      };
+
+      // 修正ポイント：マージ結果をローカルストレージにも保存し直す
+      saveDays(mergedDays);
+
+      return mergedDays;
+    }
+    // =======================================================
+
+    function saveDays(daysObj) {
+      try {
+        localStorage.setItem(STORAGE_KEY_DAYS, JSON.stringify(daysObj));
+        console.log("ローカルストレージに最新データを保存しました。"); // 保存ログを追加
+      } catch (e) {
+        console.error("saveDays error", e);
+      }
+    }
+
+    function defaultCategories() {
+// ... (省略: defaultCategories, loadCategories, saveCategories 関数は変更なし) ...
+      return [
+        { id: "study", name: "勉強", color: "#38bdf8" },
+        { id: "phone", name: "スマホ", color: "#fb7185" },
+        { id: "other", name: "その他", color: "#4ade80" }
+      ];
+    }
+    function loadCategories() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_CATS);
+        if (!raw) return defaultCategories();
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || !parsed.length) return defaultCategories();
+        return parsed;
+      } catch (e) {
+        console.error("loadCategories error", e);
+        return defaultCategories();
+      }
+    }
+    function saveCategories(cats) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CATS, JSON.stringify(cats));
+      } catch (e) {
+        console.error("saveCategories error", e);
+      }
+    }
+
+    function defaultDayData(dateStr) {
+      return {
+        date: dateStr,
+        ownership: null,
+        headline: "",
+        memo1: "",
+        memo2: "",
+        memosExtra: [],
+        focusSeconds: 0,
+        focusLogs: [],
+        timeline: Array(288).fill(null)
+      };
+    }
+
+    function withDefaults(raw, dateStr) {
+      const base = defaultDayData(dateStr);
+      if (!raw) return base;
+
+      // 旧データ（focusMinutes）からの移行
+      if (raw.focusSeconds == null && raw.focusMinutes != null) {
+        raw.focusSeconds = Math.round(raw.focusMinutes * 60);
+      }
+      delete raw.focusMinutes;
+
+      if (!Array.isArray(raw.timeline) || raw.timeline.length !== 288) {
+        raw.timeline = base.timeline;
+      }
+      
+      // 不足している可能性のあるプロパティを追加
+      return {
+        ...base,
+        ...raw,
+        memosExtra: Array.isArray(raw.memosExtra) ? raw.memosExtra : base.memosExtra,
+        focusLogs: Array.isArray(raw.focusLogs) ? raw.focusLogs : base.focusLogs,
+      };
+    }
+
+    // stateの初期化は、days: {} で一旦固定
+    const state = {
+      currentTab: "calendar",
+      currentDate: stripTime(new Date()),
+      calendarMode: "month", // "month" or "day"
+      days: {}, // 初期値は空にして、非同期ロードで上書きする
+      categories: loadCategories(),
+      activeCategoryId: null,
+      statsPage: 0,
+      pomodoroFocus: 25,
+      pomodoroBreak: 5
+    };
+    if (!state.activeCategoryId && state.categories.length) {
+      state.activeCategoryId = state.categories[0].id;
+    }
+
+    const focusTimer = {
+      running: false,
+      startTs: null,
+      sessionSeconds: 0
+    };
+
+    const mainEl = document.getElementById("main");
+    const headerTitle = document.getElementById("header-title");
+    const headerSub = document.getElementById("header-sub");
+    const headerScore = document.getElementById("header-score");
+
+    let timerIntervalId = null;
+
+    function getCategoryById(id) {
+      return state.categories.find(c => c.id === id) || null;
+    }
+
+    function switchTab(tab) {
+      state.currentTab = tab;
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tab === tab);
+      });
+      render();
+    }
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+
+    function getMonthDays(date) {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const first = new Date(year, month, 1);
+      const firstWeekday = first.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      const days = [];
+      for (let i = 0; i < firstWeekday; i++) days.push(null);
+      for (let d = 1; d <= daysInMonth; d++) {
+        days.push(new Date(year, month, d));
+      }
+      return days;
+    }
+
+    // =======================================================
+    // ======== データ保存関数 (4/6) - 単日保存用（変更なし）========
+    // =======================================================
+    /*
+    * 特定の日のデータをSupabaseの daily_logs テーブルに保存または更新する (単日)
+    */
+    async function saveDailyData(dateStr) {
+      const dayData = withDefaults(state.days[dateStr], dateStr);
+
+      const payload = {
+        log_date: dayData.date, 
+        data: {
+          ownership: dayData.ownership,
+          headline: dayData.headline,
+          memo1: dayData.memo1,
+          memo2: dayData.memo2,
+          memosExtra: dayData.memosExtra,
+          timeline: dayData.timeline,
+          focusSeconds: dayData.focusSeconds,
+          focusLogs: dayData.focusLogs
+        },
+      };
+
+      try {
+        const { error } = await supabase
+          .from('daily_logs') 
+          .upsert([payload], { 
+            onConflict: 'log_date' 
+          });
+        
+        if (error) throw error;
+
+        console.log(`Supabaseへの ${dateStr} の単日データ保存に成功しました！`);
+        return true;
+
+      } catch (error) {
+        console.error('単日データ保存エラー:', error.message);
+        return false;
+      }
+    }
+
+    // =======================================================
+    // ======== データ保存関数 (5/6) - 全データ同期用（変更なし）========
+    // =======================================================
+    /*
+    * ローカルストレージ内の全データをSupabaseに一括で保存/更新する
+    */
+    async function syncAllLocalDataToSupabase() {
+        const syncBtn = document.getElementById('saveButton');
+        if (syncBtn) syncBtn.disabled = true;
+
+        console.log("全ローカルデータの同期を開始します...");
+        
+        // 1. 全日データからSupabase用のペイロード配列を作成
+        const allPayloads = Object.keys(state.days)
+            .filter(dateStr => dateStr) 
+            .map(dateStr => {
+                const dayData = withDefaults(state.days[dateStr], dateStr);
+                return {
+                    log_date: dayData.date, 
+                    data: {
+                        ownership: dayData.ownership,
+                        headline: dayData.headline,
+                        memo1: dayData.memo1,
+                        memo2: dayData.memo2,
+                        memosExtra: dayData.memosExtra,
+                        timeline: dayData.timeline,
+                        focusSeconds: dayData.focusSeconds,
+                        focusLogs: dayData.focusLogs
+                    },
+                };
+            });
+
+        if (allPayloads.length === 0) {
+            alert("同期する記録データがありません。");
+            console.log("同期するデータなし。");
+            if (syncBtn) syncBtn.disabled = false;
+            return;
+        }
+
+        try {
+            // 2. 一括 upsert (データがあれば更新、なければ新規挿入)
+            const { error } = await supabase
+                .from('daily_logs')
+                .upsert(allPayloads, { 
+                    onConflict: 'log_date'
+                });
+            
+            if (error) throw error;
+
+            console.log(`Supabaseへの全データ (${allPayloads.length}日分) の保存に成功しました！`);
+            alert(`✅ 全${allPayloads.length}日分の記録データをクラウドに同期しました！`);
+
+        } catch (error) {
+            console.error('全データ同期エラー:', error.message);
+            alert('全データ同期中にエラーが発生しました。コンソールログを確認してください。');
+
+        } finally {
+            if (syncBtn) syncBtn.disabled = false;
+        }
+        return;
+    }
+
+    // =======================================================
+    // ======== データ保存関数 (6/6) - クラウド全削除（新規追加）========
+    // =======================================================
+    /*
+    * Supabaseの daily_logs テーブルから全データを削除する
+    */
+    async function deleteAllCloudData() {
+        console.log("Supabaseから全データを削除中...");
+        try {
+            // 存在しない日付（例: 1900-01-01）と異なる条件で全件削除を行う
+            const { error } = await supabase
+                .from('daily_logs')
+                .delete()
+                .neq('log_date', '1900-01-01');
+
+            if (error) throw error;
+
+            console.log('Supabaseの全データ削除に成功しました！');
+            return true;
+
+        } catch (error) {
+            console.error('Supabaseの全データ削除エラー:', error.message);
+            alert('⚠️ クラウドデータの削除中にエラーが発生しました。コンソールログを確認してください。');
+            return false;
+        }
+    }
+    // =======================================================
+
+
+    function renderCalendar() {
+// ... (renderCalendar, renderCalendarMonth, openDaySheet 関数は省略) ...
+      headerTitle.textContent = "Calendar";
+      headerSub.textContent = "月と日を切り替えて確認";
+      headerScore.textContent = "";
+
+      if (state.calendarMode === "month") {
+        renderCalendarMonth();
+      } else {
+        renderCalendarDay();
+      }
+    }
+
+    function renderCalendarMonth() {
+      const monthDate = state.currentDate;
+      const year = monthDate.getFullYear();
+      const month = monthDate.getMonth();
+      const monthLabel = `${year}年 ${month + 1}月`;
+      const days = getMonthDays(monthDate);
+      const weekdayLabels = ["日","月","火","水","木","金","土"];
+      const todayStr = ymd(new Date());
+
+      const daysHtml = days.map(d => {
+        if (!d) return `<div class="day-cell empty"></div>`;
+        const dateStr = ymd(d);
+        const data = state.days[dateStr];
+        const ownership = data ? (data.ownership != null ? `${data.ownership}%` : "") : "";
+        const isToday = dateStr === todayStr ? "today-outline" : "";
+
+        return `
+          <div class="day-cell ${isToday}" data-date="${dateStr}">
+            <div class="day-number">${d.getDate()}</div>
+            <div class="day-ownership">${ownership}</div>
+          </div>
+        `;
+      }).join("");
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <div class="view-toggle">
+            <button class="${state.calendarMode === "month" ? "active" : ""}" data-view="month">Month</button>
+            <button class="${state.calendarMode === "day" ? "active" : ""}" data-view="day">Day</button>
+          </div>
+          <div class="month-header">
+            <button id="prev-month">◀</button>
+            <div class="month-header-title">${monthLabel}</div>
+            <button id="next-month">▶</button>
+          </div>
+          <div class="weekday-row">
+            ${weekdayLabels.map(w => `<div class="weekday">${w}</div>`).join("")}
+          </div>
+          <div class="calendar-grid">
+            ${daysHtml}
+          </div>
+        </div>
+      `;
+
+      document.querySelectorAll(".view-toggle button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.calendarMode = btn.dataset.view;
+          render();
+        });
+      });
+
+      document.getElementById("prev-month").onclick = () => {
+        state.currentDate = new Date(year, month - 1, 1);
+        render();
+      };
+      document.getElementById("next-month").onclick = () => {
+        state.currentDate = new Date(year, month + 1, 1);
+        render();
+      };
+
+      document.querySelectorAll(".day-cell[data-date]").forEach(cell => {
+        cell.addEventListener("click", () => {
+          const dateStr = cell.dataset.date;
+          openDaySheet(dateStr);
+        });
+      });
+    }
+
+    function renderCalendarDay() {
+      const d = state.currentDate;
+      const dateStr = ymd(d);
+      const data = withDefaults(state.days[dateStr], dateStr);
+      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+      const todayStr = ymd(new Date());
+
+      const timeline = Array.isArray(data.timeline) && data.timeline.length === 288 ? data.timeline : Array(288).fill(null);
+      
+      const categoryChipsHtml = state.categories.map(cat => {
+        const isActive = cat.id === state.activeCategoryId ? "active" : "";
+        return `
+          <button class="category-chip ${isActive}" data-id="${cat.id}">
+            <span class="category-color-dot" style="background:${cat.color}"></span>
+            ${cat.name}
+          </button>
+        `;
+      }).join("");
+      
+      const rowsHtml = Array.from({length: 24}).map((_, hour) => {
+        const hourLabel = String(hour).padStart(2,"0") + ":00";
+        let blocksHtml = "";
+        for (let i = 0; i < 12; i++) {
+          const idx = hour*12 + i;
+          const catId = timeline[idx];
+          const cat = catId ? getCategoryById(catId) : null;
+          const bg = cat ? cat.color : "rgba(15,23,42,0.9)";
+          const cls = cat ? "timeline-block active" : "timeline-block";
+          blocksHtml += `<div class="${cls}" data-idx="${idx}" style="background:${bg};"></div>`;
+        }
+        return `
+          <div class="timeline-row">
+            <div class="timeline-row-label">${hourLabel}</div>
+            <div class="timeline-row-bar">
+              ${blocksHtml}
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      const startOptions = Array.from({length:24}).map((_,h)=>`<option value="${h}">${String(h).padStart(2,"0")}時</option>`).join("");
+      const minsOptions = [0,5,10,15,20,25,30,35,40,45,50,55].map(m => `<option value="${m}">${String(m).padStart(2,"0")}分</option>`).join("");
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <div class="view-toggle">
+            <button class="${state.calendarMode === "month" ? "active" : ""}" data-view="month">Month</button>
+            <button class="${state.calendarMode === "day" ? "active" : ""}" data-view="day">Day</button>
+          </div>
+          <div class="day-timeline-header">
+            <button class="day-nav-btn" id="prev-day">◀</button>
+            <h3>${dateLabel}</h3>
+            <button class="day-nav-btn" id="next-day">▶</button>
+          </div>
+          <div class="category-chips">${categoryChipsHtml}</div>
+          <div class="section-title">タイムライン（5分刻みでタップ）</div>
+          <div class="timeline-rows-wrapper" id="timeline-rows">
+            ${rowsHtml}
+          </div>
+          <div class="section-title" style="margin-top:10px;">時間帯を選択して一括登録</div>
+          <div class="range-select-row">
+            <span>開始:</span>
+            <select id="range-start-hour">${startOptions}</select>
+            <select id="range-start-min">${minsOptions}</select>
+            <span>〜 終了:</span>
+            <select id="range-end-hour">${startOptions}</select>
+            <select id="range-end-min">${minsOptions}</select>
+            <button class="btn btn-primary" id="range-apply-btn" style="padding: 4px 8px;">適用</button>
+          </div>
+        </div>
+        <div class="card">
+          <button class="btn btn-primary" style="width:100%;" id="open-sheet-btn">
+            記録（所有度、メモなど）を見る・編集する
+          </button>
+        </div>
+      `;
+
+      document.querySelectorAll(".view-toggle button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.calendarMode = btn.dataset.view;
+          render();
+        });
+      });
+      document.getElementById("prev-day").onclick = () => {
+        state.currentDate = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+        render();
+      };
+      document.getElementById("next-day").onclick = () => {
+        state.currentDate = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+        render();
+      };
+      document.getElementById("open-sheet-btn").onclick = () => openDaySheet(dateStr);
+
+      // カテゴリチップのクリックイベント
+      document.querySelectorAll(".category-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          const id = chip.dataset.id;
+          state.activeCategoryId = id;
+          renderCalendarDay(); // 再描画してアクティブ状態を反映
+        });
+      });
+
+      // タイムラインブロックのクリックイベント
+      const rowsEl = document.getElementById("timeline-rows");
+      rowsEl.querySelectorAll(".timeline-block").forEach(block => {
+        block.addEventListener("click", () => {
+          const idx = Number(block.dataset.idx);
+          const currentCatId = timeline[idx];
+          if (!state.activeCategoryId) return;
+
+          let nextCatId = null;
+          if (currentCatId === state.activeCategoryId) {
+            nextCatId = null;
+          }
+          else {
+            nextCatId = state.activeCategoryId;
+          }
+
+          timeline[idx] = nextCatId;
+          data.timeline = timeline;
+          state.days[dateStr] = data;
+          
+          // 修正ポイント：タイムライン更新時にローカルストレージに即時保存
+          saveDays(state.days);
+          
+          renderCalendarDay();
+        });
+      });
+
+      const startHourSel = document.getElementById("range-start-hour");
+      const startMinSel = document.getElementById("range-start-min");
+      const endHourSel = document.getElementById("range-end-hour");
+      const endMinSel = document.getElementById("range-end-min");
+      const applyBtn = document.getElementById("range-apply-btn");
+
+      function hmToIndex(h, m) {
+        return h * 12 + Math.floor(m / 5);
+      }
+
+      applyBtn.onclick = () => {
+        const startH = Number(startHourSel.value);
+        const startM = Number(startMinSel.value);
+        const endH = Number(endHourSel.value);
+        const endM = Number(endMinSel.value);
+
+        const startIdx = hmToIndex(startH, startM);
+        const endIdx = hmToIndex(endH, endM);
+
+        if (!state.activeCategoryId) {
+          alert("カテゴリを選択してください。");
+          return;
+        }
+
+        let start = startIdx;
+        let end = endIdx;
+        if (start > end) { // 日をまたぐ場合
+          end += 288;
+        }
+
+        for (let i = start; i < end; i++) {
+          const idx = i % 288;
+          timeline[idx] = state.activeCategoryId;
+        }
+
+        data.timeline = timeline;
+        state.days[dateStr] = data;
+        saveDays(state.days);
+        renderCalendarDay();
+      };
+    }
+
+    function openDaySheet(dateStr) {
+// ... (openDaySheet, formatMMSS, renderToday, renderStats, renderLogs, renderSettings, render 関数は省略) ...
+      const d = new Date(dateStr);
+      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+      let dayData = withDefaults(state.days[dateStr], dateStr);
+      let ownershipVal = dayData.ownership != null ? dayData.ownership : 0;
+      
+      const overlay = document.createElement("div");
+      overlay.className = "sheet-backdrop";
+      overlay.innerHTML = `
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <h3>${dateLabel}</h3>
+            <button class="sheet-close">✕</button>
+          </div>
+          <div class="card" style="margin-bottom:10px;">
+            <div class="section-title">所有度（ざっくりでOK）</div>
+            <div class="range-row">
+              <input type="range" min="0" max="100" value="${ownershipVal}" id="own-range">
+              <span id="own-label" style="font-size:11px;">${ownershipVal}%</span>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:10px;">
+            <div class="field-label">今日の一言</div>
+            <input type="text" class="headline-input" id="headline-input" placeholder="例：スマホより簿記を優先できた" value="${(dayData.headline || "").replace(/"/g, "&quot;")}">
+            <div class="field-label">メモ1（客観ログ）</div>
+            <textarea class="memo-input" id="memo1-input" placeholder="何時に何をしたか、ざっくりでOK">${dayData.memo1 || ""}</textarea>
+            <div class="field-label">メモ2（主観：気づき・反省）</div>
+            <textarea class="memo-input" id="memo2-input" placeholder="どう感じたか、どこが良くてどこが微妙だったか">${dayData.memo2 || ""}</textarea>
+            <div class="field-label">追加メモ（必要ならいくつでも）</div>
+            <div id="extra-memos"></div>
+            <button class="btn btn-ghost" id="add-memo-btn" style="margin-top:6px;">＋ メモ枠を追加</button>
+          </div>
+          <div class="save-row">
+            <button class="btn btn-ghost" id="delete-day-btn">この日の記録を削除</button>
+            <button class="btn btn-primary" id="save-day-btn">保存</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      const close = () => {
+        document.body.removeChild(overlay);
+        // 変更を保存せずに閉じた場合も、カレンダー表示に影響が出ないように再描画
+        if (state.currentTab === 'calendar') renderCalendarMonth();
+      };
+      
+      overlay.querySelector(".sheet-close").onclick = close;
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) close();
+      });
+
+      const rangeEl = overlay.querySelector("#own-range");
+      const rangeLabel = overlay.querySelector("#own-label");
+      rangeEl.addEventListener("input", () => {
+        rangeLabel.textContent = rangeEl.value + "%";
+      });
+
+      // Extra memo logic
+      const extraContainer = overlay.querySelector("#extra-memos");
+      const renderExtraMemos = () => {
+        extraContainer.innerHTML = (dayData.memosExtra || []).map((memo, index) => `
+          <div style="display:flex; gap:4px; align-items:flex-start; margin-bottom:4px;">
+            <textarea class="memo-input" data-index="${index}" placeholder="追加メモ">${memo}</textarea>
+            <button class="btn btn-ghost delete-memo-btn" data-index="${index}" style="padding:4px 6px; flex-shrink:0;">削除</button>
+          </div>
+        `).join("");
+
+        overlay.querySelectorAll(".memo-input[data-index]").forEach(input => {
+          input.addEventListener("input", (e) => {
+            const index = Number(e.target.dataset.index);
+            dayData.memosExtra[index] = e.target.value;
+          });
+        });
+
+        overlay.querySelectorAll(".delete-memo-btn").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            const index = Number(e.target.dataset.index);
+            dayData.memosExtra.splice(index, 1);
+            renderExtraMemos();
+          });
+        });
+      };
+
+      renderExtraMemos();
+      overlay.querySelector("#add-memo-btn").onclick = () => {
+        if (!dayData.memosExtra) dayData.memosExtra = [];
+        dayData.memosExtra.push("");
+        renderExtraMemos();
+      };
+
+      // Save logic
+      overlay.querySelector("#save-day-btn").onclick = async () => {
+        dayData.ownership = Number(rangeEl.value);
+        dayData.headline = overlay.querySelector("#headline-input").value.trim();
+        dayData.memo1 = overlay.querySelector("#memo1-input").value.trim();
+        dayData.memo2 = overlay.querySelector("#memo2-input").value.trim();
+        // memosExtra は input イベントで更新済み
+
+        state.days[dateStr] = dayData;
+        saveDays(state.days);
+        
+        // Supabaseへ保存 (単日)
+        const success = await saveDailyData(dateStr); 
+        if (success) {
+            alert('この日の記録をクラウドに保存しました！');
+        }
+
+        close();
+        if (state.currentTab === 'calendar') renderCalendarMonth();
+      };
+
+      // Delete logic
+      overlay.querySelector("#delete-day-btn").onclick = () => {
+        if (confirm(`${dateLabel}の記録をすべて削除しますか？`)) {
+          delete state.days[dateStr];
+          saveDays(state.days);
+          close();
+          if (state.currentTab === 'calendar') renderCalendarMonth();
+        }
+      };
+    }
+
+    function formatMMSS(seconds) {
+      const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+    
+    function renderToday() {
+      headerTitle.textContent = "Today";
+      headerSub.textContent = "今日の所有度とフォーカス";
+      const today = stripTime(new Date());
+      const todayStr = ymd(today);
+      const dayData = withDefaults(state.days[todayStr], todayStr);
+      const own = dayData.ownership;
+      headerScore.textContent = own != null ? `${own}%` : "";
+
+      const focusSeconds = dayData.focusSeconds || 0;
+      const runningLabel = focusTimer.running ? "集中セッション中…" : "停止中";
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <div class="ownership-row">
+            <div>
+              <div class="muted">${todayStr}</div>
+              <div class="ownership-main">${own != null ? own + "%" : "--%"}</div>
+            </div>
+            <div>
+              <div class="muted">目標: 70%</div>
+              <div class="tagline">自分の時間として使えた割合</div>
+              <button class="pill" id="open-sheet-btn">
+                <span>📝 記録を編集</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title">今日のフォーカス（タイマー）</div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div style="flex-grow:1;">
+              <div class="timer-display" id="session-display">${formatMMSS(focusTimer.sessionSeconds)}</div>
+              <div class="muted" id="timer-status" style="font-size:10px;">${runningLabel}</div>
+            </div>
+            <div>
+              <div class="timer-display">${formatMMSS(focusSeconds)}</div>
+              <div class="muted" style="font-size:10px;text-align:right;">累計フォーカス時間</div>
+            </div>
+          </div>
+          <div class="timer-buttons">
+            <button class="btn ${focusTimer.running ? 'btn-ghost' : 'btn-primary'}" id="timer-start-btn">
+              <span style="font-size:16px;">${focusTimer.running ? '⏸' : '▶'}</span>
+              ${focusTimer.running ? '一時停止' : '開始'}
+            </button>
+            <button class="btn btn-primary" id="timer-add-btn" ${focusTimer.sessionSeconds === 0 ? 'disabled style="opacity:0.5;cursor:default;"' : ''}>
+              <span style="font-size:16px;">➕</span>
+              記録に追加
+            </button>
+            <button class="btn btn-ghost" id="timer-reset-session-btn">
+              リセット
+            </button>
+          </div>
+          <div class="pomodoro-row">
+            <span class="muted" style="font-size:11px;">集中時間:</span>
+            <input type="number" id="focus-input" value="${state.pomodoroFocus}" min="1" max="60">
+            <span class="muted" style="font-size:11px;">分 / 休憩:</span>
+            <input type="number" id="break-input" value="${state.pomodoroBreak}" min="1" max="30">
+            <span class="muted" style="font-size:11px;">分</span>
+          </div>
+          <input type="text" class="focus-label-input" id="focus-label" placeholder="フォーカス内容（例：簿記の勉強）">
+        </div>
+        
+        <div class="card">
+          <div class="section-title">フォーカス履歴</div>
+          <div id="focus-logs">
+            ${(dayData.focusLogs || []).reverse().map(log => `
+              <div class="muted" style="font-size:11px; margin-top:4px;">
+                ${new Date(log.at).toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})} 
+                - ${formatMMSS(log.sec)}
+                ${log.label ? ` (${log.label})` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      document.getElementById("open-sheet-btn").onclick = () => openDaySheet(todayStr);
+
+      const displayEl = () => document.getElementById("session-display");
+
+      function tickTimer() {
+        if (!focusTimer.running || !focusTimer.startTs) return;
+        const now = Date.now();
+        const diffSec = Math.floor((now - focusTimer.startTs) / 1000);
+        focusTimer.sessionSeconds = diffSec;
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(diffSec);
+      }
+      
+      if (timerIntervalId) {
+        clearInterval(timerIntervalId);
+        timerIntervalId = null;
+      }
+      if (focusTimer.running) {
+        timerIntervalId = setInterval(tickTimer, 1000);
+      } else {
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(focusTimer.sessionSeconds);
+      }
+
+      document.getElementById("timer-start-btn").onclick = () => {
+        if (!focusTimer.running) {
+          focusTimer.running = true;
+          focusTimer.startTs = Date.now();
+          focusTimer.sessionSeconds = 0;
+          timerIntervalId = setInterval(tickTimer, 1000);
+          render();
+        } else {
+          focusTimer.running = false;
+          if (timerIntervalId) {
+            clearInterval(timerIntervalId);
+            timerIntervalId = null;
+          }
+          const now = Date.now();
+          focusTimer.sessionSeconds = Math.floor((now - focusTimer.startTs) / 1000);
+          focusTimer.startTs = null;
+          render();
+        }
+      };
+
+      document.getElementById("timer-add-btn").onclick = async () => {
+        if (focusTimer.sessionSeconds <= 0) return;
+
+        const labelInput = document.getElementById("focus-label");
+        const label = labelInput ? labelInput.value.trim() : "";
+        const d = withDefaults(state.days[todayStr], todayStr);
+        const addSec = focusTimer.sessionSeconds;
+        
+        d.focusSeconds = (d.focusSeconds || 0) + addSec;
+        if (!Array.isArray(d.focusLogs)) d.focusLogs = [];
+        d.focusLogs.push({ sec: addSec, label, at: new Date().toISOString() });
+        
+        state.days[todayStr] = d;
+        saveDays(state.days);
+        
+        // Supabase保存 (単日)
+        // タイマー追加時も自動で保存
+        await saveDailyData(todayStr); 
+
+        focusTimer.sessionSeconds = 0;
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(0);
+        render();
+      };
+      
+      document.getElementById("timer-reset-session-btn").onclick = () => {
+        focusTimer.sessionSeconds = 0;
+        focusTimer.running = false;
+        focusTimer.startTs = null;
+        if (timerIntervalId) {
+          clearInterval(timerIntervalId);
+          timerIntervalId = null;
+        }
+        render();
+      };
+
+      document.getElementById("focus-input").onchange = (e) => {
+        state.pomodoroFocus = Number(e.target.value);
+      };
+      document.getElementById("break-input").onchange = (e) => {
+        state.pomodoroBreak = Number(e.target.value);
+      };
+    }
+
+    function renderStats() {
+// ... (renderStats 関数は省略) ...
+      headerTitle.textContent = "Stats";
+      headerSub.textContent = "所有度の推移";
+      headerScore.textContent = "";
+
+      const allDays = Object.keys(state.days)
+          .filter(dateStr => dateStr)
+          .sort()
+          .map(dateStr => withDefaults(state.days[dateStr], dateStr));
+
+      // データの偏りをなくすために、直近30日のデータを使う（データがない日も含む）
+      const NUM_DAYS = 30;
+      const today = stripTime(new Date());
+      const allDates = [];
+      for (let i = 0; i < NUM_DAYS; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        allDates.unshift(d);
+      }
+
+      // ページングの処理
+      const page = state.statsPage;
+      const startIndex = allDates.length - (page + 1) * 7;
+      const endIndex = allDates.length - page * 7;
+      
+      const datesToDisplay = allDates.slice(Math.max(0, startIndex), endIndex);
+      
+      if (datesToDisplay.length === 0 && page > 0) {
+          state.statsPage = 0; // ページをリセットして再描画
+          renderStats();
+          return;
+      }
+      
+      const daysDataMap = new Map(allDays.map(d => [d.date, d]));
+      const bars = datesToDisplay.map(d => {
+        const dateStr = ymd(d);
+        const data = daysDataMap.get(dateStr);
+        return { date: dateStr, ownership: data ? (data.ownership != null ? data.ownership : 0) : 0 };
+      });
+      
+      if (bars.length === 0) {
+        mainEl.innerHTML = `<p class="center-note">データがありません。Todayタブで記録を始めましょう。</p>`;
+        return;
+      }
+      
+      const oldestDate = datesToDisplay[0];
+      const newestDate = datesToDisplay[datesToDisplay.length - 1];
+      const rangeLabel = `${oldestDate.getMonth()+1}/${String(oldestDate.getDate()).padStart(2,"0")} 〜 ${newestDate.getMonth()+1}/${String(newestDate.getDate()).padStart(2,"0")}`;
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <div class="stats-header">
+            <button class="stats-nav-btn" id="stats-prev">◀</button>
+            <div class="section-title">直近の所有度（棒グラフ）</div>
+            <button class="stats-nav-btn" id="stats-next"${page === 0 ? " disabled style='opacity:0.3;cursor:default;'" : ""}>▶</button>
+          </div>
+          <div class="muted" style="font-size:10px;margin-bottom:4px;">${rangeLabel}（右端が最新）</div>
+          <div class="bar-chart">
+            ${bars.map(b => {
+              const own = b.ownership || 0;
+              const heightPx = 4 + (own / 100) * 16; // 0〜100% -> 4〜20px
+              const label = b.date.slice(5).replace("-", "/");
+              return `
+                <div class="bar-item">
+                  <div class="bar" style="height:${heightPx}px;"></div>
+                  <div class="bar-percent">${own}%</div>
+                  <div class="bar-label">${label}</div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+        <p class="center-note">
+          棒が高い日ほど「自分の意思で生きた割合」が高い日。<br>
+          記録していない日は0%として扱っています。右端が今日を含む最新日です。
+        </p>
+      `;
+
+      document.getElementById("stats-prev").onclick = () => {
+        state.statsPage += 1;
+        render();
+      };
+      document.getElementById("stats-next").onclick = () => {
+        if (state.statsPage > 0) {
+          state.statsPage -= 1;
+          render();
+        }
+      };
+    }
+
+    function renderLogs() {
+// ... (renderLogs 関数は省略) ...
+      headerTitle.textContent = "Logs";
+      headerSub.textContent = "すべての記録から検索";
+      headerScore.textContent = "";
+
+      const allLogs = Object.keys(state.days)
+          .filter(dateStr => state.days[dateStr] && (state.days[dateStr].headline || state.days[dateStr].memo1 || state.days[dateStr].memo2 || (state.days[dateStr].memosExtra || []).length > 0))
+          .sort((a, b) => b.localeCompare(a)) // 日付で降順ソート
+          .map(dateStr => withDefaults(state.days[dateStr], dateStr));
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <input type="text" class="headline-input" id="log-search-input" placeholder="キーワードで検索...">
+        </div>
+        <div id="log-results">
+          ${allLogs.map(data => `
+            <div class="card log-card" data-date="${data.date}">
+              <h2>${data.date.replace(/-/g, '/')} ${data.headline ? `- ${data.headline}` : ''}</h2>
+              <div class="muted" style="font-size:11px;">${data.memo1 || ''}</div>
+            </div>
+          `).join('')}
+        </div>
+        ${allLogs.length === 0 ? `<p class="center-note">記録がありません。</p>` : ''}
+      `;
+
+      const searchInput = document.getElementById("log-search-input");
+      const resultsContainer = document.getElementById("log-results");
+
+      const filterLogs = () => {
+        const query = searchInput.value.toLowerCase();
+        const filtered = allLogs.filter(data => {
+          return data.headline.toLowerCase().includes(query) ||
+                 data.memo1.toLowerCase().includes(query) ||
+                 data.memo2.toLowerCase().includes(query) ||
+                 (data.memosExtra || []).some(m => m.toLowerCase().includes(query));
+        });
+
+        resultsContainer.innerHTML = filtered.map(data => `
+          <div class="card log-card" data-date="${data.date}">
+            <h2>${data.date.replace(/-/g, '/')} ${data.headline ? `- ${data.headline}` : ''}</h2>
+            <div class="muted" style="font-size:11px;">${data.memo1 || ''}</div>
+          </div>
+        `).join('');
+
+        document.querySelectorAll(".log-card").forEach(card => {
+          card.addEventListener("click", () => {
+            openDaySheet(card.dataset.date);
+          });
+        });
+      };
+
+      searchInput.addEventListener("input", filterLogs);
+      filterLogs(); // 初回表示
+    }
+
+    function renderSettings() {
+      headerTitle.textContent = "Settings";
+      headerSub.textContent = "設定とデータ管理";
+      headerScore.textContent = "";
+
+      mainEl.innerHTML = `
+        <div class="card">
+          <div class="section-title">カテゴリー設定</div>
+          <div id="category-settings">
+            ${state.categories.map(cat => `
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <input type="color" class="cat-color-input" data-id="${cat.id}" value="${cat.color}" style="width:30px; height:30px; border:none; padding:0;">
+                <input type="text" class="log-headline-input cat-name-input" data-id="${cat.id}" value="${cat.name}" style="flex-grow:1;">
+                <button class="btn btn-ghost delete-cat-btn" data-id="${cat.id}" style="padding:4px 8px;">削除</button>
+              </div>
+            `).join('')}
+          </div>
+          <button class="btn btn-ghost" id="add-cat-btn" style="margin-top:8px;">＋ 新しいカテゴリーを追加</button>
+        </div>
+        
+        <div class="card">
+          <div class="section-title">データ管理</div>
+          <p class="muted" style="font-size:11px; margin-bottom:8px;">
+            このアプリのデータはブラウザ（ローカルストレージ）とクラウド（Supabase）に保存されています。
+          </p>
+          <button class="btn btn-ghost" id="export-btn" style="margin-right:8px;">JSONファイルをエクスポート</button>
+          <button class="btn btn-ghost" id="clear-btn" style="color:var(--danger); border-color:var(--danger);">全記録データを削除</button>
+        </div>
+      `;
+
+      document.querySelectorAll(".cat-name-input").forEach(input => {
+        input.addEventListener("input", (e) => {
+          const id = e.target.dataset.id;
+          const cat = getCategoryById(id);
+          if (cat) cat.name = e.target.value;
+          saveCategories(state.categories);
+        });
+      });
+      document.querySelectorAll(".cat-color-input").forEach(input => {
+        input.addEventListener("input", (e) => {
+          const id = e.target.dataset.id;
+          const cat = getCategoryById(id);
+          if (cat) cat.color = e.target.value;
+          saveCategories(state.categories);
+        });
+      });
+      document.querySelectorAll(".delete-cat-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.target.dataset.id;
+          if (state.categories.length <= 1) {
+            alert("カテゴリは最低1つ必要です。");
+            return;
+          }
+          if (!confirm(`カテゴリー「${getCategoryById(id).name}」を削除しますか？\n（このカテゴリーで記録されたタイムラインのデータは削除されません）`)) return;
+
+          state.categories = state.categories.filter(c => c.id !== id);
+          if (state.activeCategoryId === id) state.activeCategoryId = state.categories[0].id;
+          saveCategories(state.categories);
+          renderSettings();
+        });
+      });
+
+      document.getElementById("add-cat-btn").onclick = () => {
+        const newId = "cat_" + Date.now();
+        state.categories.push({
+          id: newId,
+          name: "新しいカテゴリ",
+          color: "#facc15"
+        });
+        saveCategories(state.categories);
+        if (!state.activeCategoryId) state.activeCategoryId = newId;
+        renderSettings();
+      };
+
+      document.getElementById("export-btn").onclick = () => {
+        const blob = new Blob([JSON.stringify({ days: state.days, categories: state.categories }, null, 2)], {type:"application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "life_ownership_data.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // ★★★ 修正ポイント：クラウド全削除を追加 ★★★
+      document.getElementById("clear-btn").onclick = async () => {
+        const confirmed = confirm("本当に全記録データを削除しますか？\n\n⚠️ この操作は**ブラウザとクラウド（Supabase）の両方**の記録を完全に消去します。元に戻せません。（カテゴリ設定は残ります）");
+
+        if (!confirmed) {
+          return;
+        }
+        
+        // 1. ローカルデータを削除
+        state.days = {};
+        saveDays(state.days);
+        
+        // 2. クラウドデータを削除
+        await deleteAllCloudData();
+        
+        // 3. 画面を更新
+        render();
+        alert('✅ 全記録データ（ローカルとクラウド）を削除しました。');
+      };
+      // ★★★ 修正ポイント END ★★★
+    }
+
+    function render() {
+      // ローディング画面の削除
+      const loadingEl = document.getElementById('loading-overlay');
+      if (loadingEl) {
+        loadingEl.remove();
+        document.getElementById('app').style.opacity = 1;
+      }
+      
+      switch (state.currentTab) {
+        case "today":
+          renderToday();
+          break;
+        case "calendar":
+          renderCalendar();
+          break;
+        case "stats":
+          renderStats();
+          break;
+        case "logs":
+          renderLogs();
+          break;
+        case "settings":
+          renderSettings();
+          break;
+      }
+    }
+
+    // =======================================================
+    // ======== アプリ初期化処理 (7/7) - 変更なし ========
+    // =======================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+        // ロード中を示すダミーの要素を表示（App本体はopacity:0にしておく）
+        document.getElementById('app').style.opacity = 0;
+        document.body.insertAdjacentHTML('afterbegin', `
+          <div id="loading-overlay" style="position:fixed; top:0; left:0; right:0; bottom:0; background:var(--bg); color:var(--text-muted); display:flex; justify-content:center; align-items:center; flex-direction:column; z-index:9999;">
+            <p>クラウドデータとローカルデータを同期中...</p>
+          </div>
+        `);
+
+        // 1. クラウドとローカルからデータを読み込み、state.days を更新
+        // loadDays内でタイムアウト処理が実行されるため、安全に待機できます。
+        const mergedDays = await loadDays(); 
+        state.days = mergedDays;
+
+        // 2. 全同期ボタンの接続 (前ステップで追加した機能)
+        const syncBtn = document.getElementById('saveButton');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', syncAllLocalDataToSupabase);
+            syncBtn.textContent = '⚡ 全記録をクラウドに同期'; 
+        }
+
+        // 3. 全てのデータロードが完了したら、メイン画面を描画
+        render(); 
+    });
+    // =======================================================
+  </script>
+</body>
+</html>
