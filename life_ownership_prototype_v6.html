@@ -731,7 +731,55 @@
 }
 
 /* ... 既存のCSS（省略） ... */
-  </style>
+  
+/* === v7 overrides: calendar day view scroll sync === */
+.schedule-view-wrapper {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 0;
+    margin-top: 10px;
+    border: 1px solid var(--card);
+    border-radius: 6px;
+    height: 70vh;
+    overflow-y: auto; /* scroll both time column and schedule together */
+}
+
+.hour-labels-col {
+    position: static;           /* no sticky; scrolls with timeline */
+}
+
+.schedule-timeline-col {
+    overflow-y: visible;        /* parent handles scrolling */
+}
+
+
+/* === v7 compat override: unify day grid rows for hour labels & schedule === */
+.schedule-view-wrapper {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    grid-template-rows: repeat(288, minmax(4px, 1fr)); /* 5分刻み 288行をここで定義 */
+    height: 70vh;
+    overflow-y: auto; /* ラベルもブロックも一緒にスクロール */
+}
+
+/* 子コンテナは「中身だけ」をグリッドに乗せる */
+.hour-labels-col,
+.schedule-timeline-col {
+    display: contents;           /* 自身は消え、中の要素が .schedule-view-wrapper のグリッドアイテムになる */
+}
+
+/* 時間ラベルは1列目に配置し、1時間=12マスぶんを占有 */
+.hour-label-block {
+    grid-column: 1;
+    border-right: 1px solid var(--card);
+}
+
+/* スケジュールブロックは2列目に配置 */
+.schedule-block {
+    grid-column: 2;
+}
+
+</style>
 </head>
 <body>
   <div id="app">
@@ -2475,6 +2523,129 @@
         render(); 
     });
     // =======================================================
-  </script>
+  
+// ===== v7 override: time block sheet with editable start/end =====
+function openTimeBlockSheet(dateStr, startIdx, endIdx) {
+    const d = new Date(dateStr);
+    const dayData = withDefaults(state.days[dateStr], dateStr);
+    const timeline = dayData.timeline;
+
+    // current time range (for initial values)
+    const startH = Math.floor(startIdx / 12);
+    const startM = (startIdx % 12) * 5;
+    const endH = Math.floor(endIdx / 12);
+    const endM = (endIdx % 12) * 5;
+
+    // helper to clamp minutes to 5-min steps
+    function clampMinute(v) {
+        let m = Math.round(v / 5) * 5;
+        if (m < 0) m = 0;
+        if (m > 55) m = 55;
+        return m;
+    }
+
+    // helper: 24:00 を 288 に、それ以外は hmToIndex を使う
+    function hmToIndexSafe(h, m) {
+        if (h === 24 && m === 0) return 288;
+        if (h < 0) h = 0;
+        if (h > 23) h = 23;
+        m = clampMinute(m);
+        return hmToIndex(h, m);
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "sheet-backdrop";
+
+    // HTML: 「開始 99:99 から 99:99 の間」の形は残しつつ、数字だけ入力欄にする
+    overlay.innerHTML = `
+        <div class="sheet" style="max-height: 70vh;">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h3>${dateStr}</h3>
+                <button class="sheet-close">✕</button>
+            </div>
+            <div class="card" style="margin-bottom:10px;">
+                <div class="section-title">スケジュール編集</div>
+                <p class="muted" style="font-size:11px; display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
+                    開始 
+                    <input id="start-hour-input" type="number" min="0" max="24" step="1" 
+                           value="${String(startH).padStart(2, '0')}" 
+                           style="width:42px; text-align:right; font-size:11px; padding:2px 4px; border-radius:4px; border:1px solid rgba(148,163,184,0.5); background:#020617; color:var(--text-main);">
+                    :
+                    <input id="start-minute-input" type="number" min="0" max="55" step="5" 
+                           value="${String(startM).padStart(2, '0')}" 
+                           style="width:34px; text-align:right; font-size:11px; padding:2px 4px; border-radius:4px; border:1px solid rgba(148,163,184,0.5); background:#020617; color:var(--text-main);">
+                    から
+                    <input id="end-hour-input" type="number" min="0" max="24" step="1" 
+                           value="${endIdx === 288 ? '24' : String(endH).padStart(2, '0')}" 
+                           style="width:42px; text-align:right; font-size:11px; padding:2px 4px; border-radius:4px; border:1px solid rgba(148,163,184,0.5); background:#020617; color:var(--text-main);">
+                    :
+                    <input id="end-minute-input" type="number" min="0" max="55" step="5" 
+                           value="${endIdx === 288 ? '00' : String(endM).padStart(2, '0')}" 
+                           style="width:34px; text-align:right; font-size:11px; padding:2px 4px; border-radius:4px; border:1px solid rgba(148,163,184,0.5); background:#020617; color:var(--text-main);">
+                    の間
+                </p>
+                <div class="field-label" style="margin-top:10px;">カテゴリ</div>
+                <select id="block-category-select" class="headline-input">
+                    <option value="null">未設定（空き時間）</option>
+                    ${state.categories.map(c => 
+                        `<option value="${c.id}" ${timeline[startIdx] === c.id ? 'selected' : ''}>${c.name}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary" id="save-block-btn">保存</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => {
+        document.body.removeChild(overlay);
+    };
+
+    overlay.querySelector(".sheet-close").onclick = close;
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) close();
+    });
+
+    overlay.querySelector("#save-block-btn").onclick = async () => {
+        const sh = Number(document.getElementById("start-hour-input").value);
+        const sm = Number(document.getElementById("start-minute-input").value);
+        const eh = Number(document.getElementById("end-hour-input").value);
+        const em = Number(document.getElementById("end-minute-input").value);
+
+        // 分は 5分刻みに丸める
+        const startIdxNew = hmToIndexSafe(sh, sm);
+        const endIdxNew   = hmToIndexSafe(eh, em);
+
+        if (isNaN(startIdxNew) || isNaN(endIdxNew)) {
+            alert("時刻の形式が不正です。");
+            return;
+        }
+        if (startIdxNew >= endIdxNew) {
+            alert("終了時刻は開始時刻より後にしてください。");
+            return;
+        }
+
+        const newCatIdRaw = document.getElementById("block-category-select").value;
+        const newCatId = newCatIdRaw === "null" ? null : newCatIdRaw;
+
+        for (let i = startIdxNew; i < endIdxNew && i < 288; i++) {
+            timeline[i] = newCatId;
+        }
+
+        dayData.timeline = timeline;
+        state.days[dateStr] = dayData;
+        saveDays(state.days);
+        await saveDailyData(dateStr);
+
+        close();
+        renderCalendarDay();
+    };
+}
+
+</script>
 </body>
 </html>
