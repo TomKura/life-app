@@ -615,20 +615,24 @@
       justify-content: center;
       flex: 1;
     }
-    .timer-circle {
-      width: 120px;
-      height: 120px;
+.timer-circle {
+      width: 90px;
+      height: 90px;
       border-radius: 50%;
       border: 2px solid var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 25px rgba(56,189,248,0.35);
-      background: radial-gradient(circle at top, rgba(56,189,248,0.25), rgba(15,23,42,1));
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-    }
-    .timer-circle.running {
-      animation: timerPulse 1.2s ease-in-out infinite;
+      box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 12px rgba(56,189,248,0.30);
+      background: radial-gradient(circle at top, rgba(56,189,248,0.18), rgba(15,23,42,1));
+      /* 拡大縮小アニメーションは無しで、静かな挙動にする */
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.timer-circle.running {
+      /* アニメーションしない（クラスはそのまま使う） */
+}
+
     }
     .timer-circle.break {
       border-color: #4ade80;
@@ -1110,28 +1114,7 @@
             color: c.color,
             sort_order: c.sortOrder
           }));
-
-          // Supabase 側のカテゴリを「この一覧と完全一致」させる
-          if (!payloads.length) {
-            // すべて削除
-            const { error: delError } = await supabase
-              .from('categories')
-              .delete()
-              .neq('id', '');
-            if (delError) {
-              console.error("saveCategories Supabase delete-all error:", delError.message);
-            }
-            return;
-          }
-
-          // 既存の行を全削除してから現在の一覧を upsert
-          const { error: delError } = await supabase
-            .from('categories')
-            .delete()
-            .neq('id', '');
-          if (delError) {
-            console.error("saveCategories Supabase delete error:", delError.message);
-          }
+          if (!payloads.length) return;
 
           const { error } = await supabase
             .from('categories')
@@ -1336,27 +1319,8 @@
             end_idx: l.endIdx,
             label: l.label || ''
           }));
-
-          // Supabase 側の繰り返しログを「この一覧と完全一致」にする
-          if (!payloads.length) {
-            const { error: delError } = await supabase
-              .from('recurring_logs')
-              .delete()
-              .neq('id', '');
-            if (delError) {
-              console.error("saveRecurringLogs Supabase delete-all error:", delError.message);
-            }
-            return;
-          }
-
-          // 既存行を全削除してから現在の一覧を upsert
-          const { error: delError } = await supabase
-            .from('recurring_logs')
-            .delete()
-            .neq('id', '');
-          if (delError) {
-            console.error("saveRecurringLogs Supabase delete error:", delError.message);
-          }
+          // 空の場合は削除でもよいが、とりあえず何もしない
+          if (!payloads.length) return;
 
           const { error } = await supabase
             .from('recurring_logs')
@@ -1811,6 +1775,8 @@
       const d = state.currentDate;
       const dateStr = ymd(d);
       const data = withDefaults(state.days[dateStr], dateStr); 
+      
+      // 曜日付きの日付ラベル
       const weekdayNames = ["日","月","火","水","木","金","土"];
       const weekday = weekdayNames[d.getDay()];
       const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${weekday}）`;
@@ -2060,9 +2026,7 @@
     
     function openDaySheet(dateStr) {
       const d = new Date(dateStr);
-      const weekdayNames = ["日","月","火","水","木","金","土"];
-      const weekday = weekdayNames[d.getDay()];
-      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${weekday}）`;
+      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
       let dayData = withDefaults(state.days[dateStr], dateStr);
       
       // ★NEW: 振り返り評価のHTML生成
@@ -2776,10 +2740,7 @@
           <div id="recurring-logs-settings">
             ${renderRecurringLogsList()}
           </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:8px;">
-            <button class="btn btn-ghost" id="add-recurring-btn">＋ 繰り返しログを追加</button>
-            <button class="btn btn-primary" id="save-recurring-btn">決定</button>
-          </div>
+          <button class="btn btn-ghost" id="add-recurring-btn" style="margin-top:8px;">＋ 繰り返しログを追加</button>
         </div>
 
         <div class="card">
@@ -2811,20 +2772,55 @@
       });
       
       document.querySelectorAll(".delete-cat-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const id = e.target.dataset.id;
-          if (state.categories.length <= 1) {
-            alert("カテゴリは最低1つ必要です。");
-            return;
-          }
-          if (!confirm(`カテゴリー「${getCategoryById(id).name}」を削除しますか？\n（このカテゴリーで記録されたタイムラインのデータは削除されません）`)) return;
+  btn.addEventListener("click", async (e) => {
+    const id = e.currentTarget.dataset.id;
 
-          state.categories = state.categories.filter(c => c.id !== id);
-          if (state.activeCategoryId === id) state.activeCategoryId = state.categories[0].id;
-          saveCategories(state.categories);
-          renderSettings();
-        });
-      });
+    if (state.categories.length <= 1) {
+      alert("カテゴリは最低1つ必要です。");
+      return;
+    }
+
+    const cat = getCategoryById(id);
+    if (!cat) {
+      console.warn("削除対象カテゴリが見つかりません:", id);
+      return;
+    }
+
+    if (!confirm(`カテゴリー「${cat.name}」を削除しますか？\n（このカテゴリーで記録されたタイムラインのデータは削除されません）`)) {
+      return;
+    }
+
+    // 1. ローカル state から削除
+    state.categories = state.categories.filter(c => c.id !== id);
+    if (state.activeCategoryId === id && state.categories.length > 0) {
+      state.activeCategoryId = state.categories[0].id;
+    }
+
+    // 2. 残りカテゴリをローカル + Supabase に保存
+    saveCategories(state.categories);
+
+    // 3. Supabase の categories テーブルから該当IDを削除
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error("Supabase categories delete error:", error.message);
+        alert("クラウド側のカテゴリ削除に失敗しました。コンソールログを確認してください。");
+      } else {
+        console.log("Supabase categories delete success:", id);
+      }
+    } catch (err) {
+      console.error("Supabase categories delete unexpected error:", err);
+      alert("クラウド側のカテゴリ削除中に予期せぬエラーが発生しました。");
+    }
+
+    renderSettings();
+  });
+});
+
 
       const addCatBtn = document.getElementById("add-cat-btn");
       if (addCatBtn) {
@@ -2968,13 +2964,13 @@
                   log.days.push(day); 
                   log.days.sort((a,b) => a-b);
               }
-              // ここでは保存せず、画面だけ更新（「決定」ボタンで保存）
+              saveRecurringLogs(state.recurringLogs);
               renderSettings(); 
           }
           if (e.target.matches('.delete-recurring-btn')) {
               const index = Number(e.target.dataset.index);
               state.recurringLogs.splice(index, 1);
-              // ここでは保存せず、画面だけ更新
+              saveRecurringLogs(state.recurringLogs);
               renderSettings();
           }
       });
@@ -2986,18 +2982,9 @@
               startIdx: hmToIndex(9, 0), 
               endIdx: hmToIndex(17, 0) 
           });
-          // ここでは保存せず、状態だけ更新（「決定」ボタンで保存）
+          saveRecurringLogs(state.recurringLogs);
           renderSettings();
       };
-
-      // 「決定」ボタンで初めてローカル＆クラウドに保存
-      const saveRecurringBtn = document.getElementById("save-recurring-btn");
-      if (saveRecurringBtn) {
-          saveRecurringBtn.onclick = () => {
-              saveRecurringLogs(state.recurringLogs);
-              alert("繰り返しログの設定を保存しました。");
-          };
-      }
       
       document.querySelectorAll('.recurring-log-item select[data-type]').forEach(select => {
           const defaultValue = select.dataset.default;
