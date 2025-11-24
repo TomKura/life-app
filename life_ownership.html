@@ -1915,6 +1915,11 @@
             <h3>${dateLabel}</h3>
             <button class="day-nav-btn" id="next-day">▶</button>
           </div>
+          <div style="margin: 6px 0 8px;">
+            <button class="btn btn-primary" style="width:100%;" id="open-sheet-btn">
+              記録（振り返り、メモ）を見る・編集する
+            </button>
+          </div>
           <div class="category-chips">${categoryChipsHtml}</div>
           
           <div style="text-align:center; padding: 8px 0; border-bottom: 1px dashed var(--text-muted); margin-bottom:10px; border-radius: 4px;">
@@ -1949,11 +1954,6 @@
             <select id="range-end-min">${minsOptions}</select>
             <button class="btn btn-primary" id="range-apply-btn" style="padding: 4px 8px;">適用</button>
           </div>
-        </div>
-        <div class="card">
-          <button class="btn btn-primary" style="width:100%;" id="open-sheet-btn">
-            記録（振り返り、メモ）を見る・編集する
-          </button>
         </div>
       `;
       document.querySelectorAll(".view-toggle button").forEach(btn => {
