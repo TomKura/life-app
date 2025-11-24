@@ -2,8 +2,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <link rel="apple-touch-icon" sizes="512x512" href="lo-icon-181.png.png">
-  <link rel="icon" type="image/png" href="lo-icon-181.png.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="lo-icon-501.png.png">
+  <link rel="icon" type="image/png" href="lo-icon-501.png.png">
 
   
   
@@ -1838,7 +1838,7 @@
           <div class="category-chips">${categoryChipsHtml}</div>
           
           <div style="text-align:center; padding: 8px 0; border-bottom: 1px dashed var(--text-muted); margin-bottom:10px; border-radius: 4px;">
-              <span class="muted" style="font-size:11px;">未設定時間（可処分時間）合計: </span>
+              <span class="muted" style="font-size:11px;">合計: </span>
               <span style="font-weight:bold; color:var(--accent);">${unscheduledTimeStr}</span>
           </div>
           
@@ -2524,18 +2524,25 @@
       mainEl.innerHTML = `
         <div class="card">
           
+          
           <div class="section-title">カテゴリー設定</div>
           <p class="muted" style="font-size:11px; margin-bottom:6px;">
-            カテゴリ行を長押しすると並び替えモードになります。（ドラッグで移動 / 完了で終了）
+            行を長押しすると並び替えモードになります。（↑↓で移動 / 完了で終了）
           </p>
-          <div id="category-settings" class="${state.categoryReorderMode ? 'cat-reorder-mode' : ''}">
-            ${state.categories.map(cat => `
-              <div class="cat-row" data-id="${cat.id}" draggable="${state.categoryReorderMode ? 'true' : 'false'}"
+          <div id="category-settings">
+            ${state.categories.map((cat, index) => `
+              <div class="cat-row" data-id="${cat.id}"
                    style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:8px 6px; border-radius:10px; border:1px solid var(--card); background:rgba(15,23,42,0.9);">
-                <div class="cat-drag-handle" style="width:16px; text-align:center; font-size:14px; cursor:${state.categoryReorderMode ? 'grab' : 'default'};">≡</div>
+                <div class="cat-row-longpress-area" data-id="${cat.id}" style="width:12px; font-size:12px; opacity:0.7; user-select:none;">${state.categoryReorderMode ? '||' : ''}</div>
                 <input type="color" class="cat-color-input" data-id="${cat.id}" value="${cat.color}" style="width:30px; height:30px; border:none; padding:0;">
                 <input type="text" class="log-headline-input cat-name-input" data-id="${cat.id}" value="${cat.name}" style="flex-grow:1;">
-                <button class="btn btn-ghost delete-cat-btn" data-id="${cat.id}" style="padding:4px 8px;">削除</button>
+                ${state.categoryReorderMode ? `
+                  <div style="display:flex; flex-direction:column; gap:4px; margin-left:4px;">
+                    <button class="btn btn-ghost cat-move-up-btn" data-id="${cat.id}" style="padding:4px 8px; font-size:12px;">↑</button>
+                    <button class="btn btn-ghost cat-move-down-btn" data-id="${cat.id}" style="padding:4px 8px; font-size:12px;">↓</button>
+                  </div>
+                ` : ''}
+                <button class="btn btn-ghost delete-cat-btn" data-id="${cat.id}" style="padding:4px 8px; margin-left:4px;">削除</button>
               </div>
             `).join('')}
           </div>
@@ -2546,6 +2553,7 @@
         </div>
 
         <div class="card">
+<div class="card">
 <div class="card">
           <div class="section-title">繰り返しログ（テンプレート設定）</div>
           <p class="muted" style="font-size:11px; margin-bottom:10px;">
@@ -2616,15 +2624,31 @@
         };
       }
 
-      // 長押しで並び替えモードを開始
+      // 並び替え用のヘルパー
+      function moveCategorySimple(id, direction) {
+        const idx = state.categories.findIndex(c => c.id === id);
+        if (idx === -1) return;
+        const target = direction === "up" ? idx - 1 : idx + 1;
+        if (target < 0 || target >= state.categories.length) return;
+        const newCats = [...state.categories];
+        const tmp = newCats[idx];
+        newCats[idx] = newCats[target];
+        newCats[target] = tmp;
+        saveCategories(newCats);
+        renderSettings();
+      }
+
+      // 長押しで並び替えモードを開始（スマホ対応）
       let catLongPressTimer = null;
+      const longPressMs = 500;
+
       function startCatLongPress(e) {
         if (state.categoryReorderMode) return;
-        const rowEl = e.currentTarget;
+        const id = e.currentTarget.dataset.id;
         catLongPressTimer = setTimeout(() => {
           state.categoryReorderMode = true;
           renderSettings();
-        }, 500);
+        }, longPressMs);
       }
       function cancelCatLongPress() {
         if (catLongPressTimer) {
@@ -2642,57 +2666,27 @@
         row.addEventListener("touchcancel", cancelCatLongPress);
       });
 
-      // 並び替えモード中のドラッグ＆ドロップ
-      if (state.categoryReorderMode) {
-        let dragSrcId = null;
-
-        document.querySelectorAll(".cat-row").forEach(row => {
-          row.addEventListener("dragstart", (e) => {
-            dragSrcId = e.currentTarget.dataset.id;
-            if (e.dataTransfer) {
-              e.dataTransfer.effectAllowed = "move";
-            }
-            e.currentTarget.classList.add("dragging");
-          });
-
-          row.addEventListener("dragend", (e) => {
-            e.currentTarget.classList.remove("dragging");
-          });
-
-          row.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            e.currentTarget.classList.add("drag-over");
-          });
-
-          row.addEventListener("dragleave", (e) => {
-            e.currentTarget.classList.remove("drag-over");
-          });
-
-          row.addEventListener("drop", (e) => {
-            e.preventDefault();
-            e.currentTarget.classList.remove("drag-over");
-            const targetId = e.currentTarget.dataset.id;
-            if (!dragSrcId || dragSrcId === targetId) return;
-
-            const fromIdx = state.categories.findIndex(c => c.id === dragSrcId);
-            const toIdx = state.categories.findIndex(c => c.id === targetId);
-            if (fromIdx === -1 || toIdx === -1) return;
-
-            const newCats = [...state.categories];
-            const [moved] = newCats.splice(fromIdx, 1);
-            newCats.splice(toIdx, 0, moved);
-            saveCategories(newCats);
-            renderSettings();
-          });
+      // 並び替えモード中の↑↓ボタン
+      document.querySelectorAll(".cat-move-up-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.currentTarget.dataset.id;
+          moveCategorySimple(id, "up");
         });
+      });
 
-        const doneBtn = document.getElementById("cat-reorder-done-btn");
-        if (doneBtn) {
-          doneBtn.addEventListener("click", () => {
-            state.categoryReorderMode = false;
-            renderSettings();
-          });
-        }
+      document.querySelectorAll(".cat-move-down-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.currentTarget.dataset.id;
+          moveCategorySimple(id, "down");
+        });
+      });
+
+      const doneBtn = document.getElementById("cat-reorder-done-btn");
+      if (doneBtn) {
+        doneBtn.addEventListener("click", () => {
+          state.categoryReorderMode = false;
+          renderSettings();
+        });
       }
 
 // ★NEW: 振り返り基準設定イベントリスナー
