@@ -875,10 +875,7 @@
 
     <div class="tab-bar">
       <div class="tab-inner">
-        <button class="tab-btn" data-tab="today">
-          <span class="icon">☀️</span>
-          <span>Today</span>
-        </button>
+        
         <button class="tab-btn active" data-tab="calendar">
           <span class="icon">📅</span>
           <span>Calendar</span>
@@ -3088,8 +3085,8 @@
       
       switch (state.currentTab) {
         case "today":
-          renderToday();
-          break;
+        /* Today tab removed */
+        break;
         case "calendar":
           renderCalendar();
           break;
