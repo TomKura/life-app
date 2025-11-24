@@ -586,13 +586,64 @@
     /* Focus timer */
     .timer-display {
       font-variant-numeric: tabular-nums;
-      font-size: 22px;
-      font-weight: 600;
+      font-size: 32px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .timer-display-small {
+      font-size: 18px;
+      font-weight: 500;
+    }
+    .focus-timer-layout {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .focus-timer-main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .focus-timer-summary {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      flex: 1;
+    }
+    .timer-circle {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 25px rgba(56,189,248,0.35);
+      background: radial-gradient(circle at top, rgba(56,189,248,0.25), rgba(15,23,42,1));
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .timer-circle.running {
+      animation: timerPulse 1.2s ease-in-out infinite;
+    }
+    .timer-circle.break {
+      border-color: #4ade80;
+      box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 25px rgba(74,222,128,0.35);
+      background: radial-gradient(circle at top, rgba(74,222,128,0.22), rgba(15,23,42,1));
+    }
+    @keyframes timerPulse {
+      0%   { transform: scale(1);   box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 18px rgba(56,189,248,0.25); }
+      50%  { transform: scale(1.04); box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 32px rgba(56,189,248,0.55); }
+      100% { transform: scale(1);   box-shadow: 0 0 0 1px rgba(15,23,42,0.9), 0 0 18px rgba(56,189,248,0.25); }
     }
     .timer-buttons {
       display: flex;
       gap: 8px;
-      margin-top: 8px;
+      margin-top: 10px;
       flex-wrap: wrap;
     }
     .pomodoro-row {
@@ -1059,7 +1110,28 @@
             color: c.color,
             sort_order: c.sortOrder
           }));
-          if (!payloads.length) return;
+
+          // Supabase 側のカテゴリを「この一覧と完全一致」させる
+          if (!payloads.length) {
+            // すべて削除
+            const { error: delError } = await supabase
+              .from('categories')
+              .delete()
+              .neq('id', '');
+            if (delError) {
+              console.error("saveCategories Supabase delete-all error:", delError.message);
+            }
+            return;
+          }
+
+          // 既存の行を全削除してから現在の一覧を upsert
+          const { error: delError } = await supabase
+            .from('categories')
+            .delete()
+            .neq('id', '');
+          if (delError) {
+            console.error("saveCategories Supabase delete error:", delError.message);
+          }
 
           const { error } = await supabase
             .from('categories')
@@ -1264,8 +1336,27 @@
             end_idx: l.endIdx,
             label: l.label || ''
           }));
-          // 空の場合は削除でもよいが、とりあえず何もしない
-          if (!payloads.length) return;
+
+          // Supabase 側の繰り返しログを「この一覧と完全一致」にする
+          if (!payloads.length) {
+            const { error: delError } = await supabase
+              .from('recurring_logs')
+              .delete()
+              .neq('id', '');
+            if (delError) {
+              console.error("saveRecurringLogs Supabase delete-all error:", delError.message);
+            }
+            return;
+          }
+
+          // 既存行を全削除してから現在の一覧を upsert
+          const { error: delError } = await supabase
+            .from('recurring_logs')
+            .delete()
+            .neq('id', '');
+          if (delError) {
+            console.error("saveRecurringLogs Supabase delete error:", delError.message);
+          }
 
           const { error } = await supabase
             .from('recurring_logs')
@@ -1371,8 +1462,9 @@
 
     const focusTimer = {
       running: false,
-      startTs: null,
-      sessionSeconds: 0
+      mode: "focus",          // "focus" or "break"
+      sessionSeconds: 0,      // 経過秒数（現在のセグメント）
+      remainingSeconds: 0     // 残り秒数（カウントダウン表示用）
     };
 
     const mainEl = document.getElementById("main");
@@ -1719,7 +1811,9 @@
       const d = state.currentDate;
       const dateStr = ymd(d);
       const data = withDefaults(state.days[dateStr], dateStr); 
-      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+      const weekdayNames = ["日","月","火","水","木","金","土"];
+      const weekday = weekdayNames[d.getDay()];
+      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${weekday}）`;
       const todayStr = ymd(new Date());
 
       const timeline = Array.isArray(data.timeline) && data.timeline.length === 288 ? data.timeline : Array(288).fill(null);
@@ -1966,7 +2060,9 @@
     
     function openDaySheet(dateStr) {
       const d = new Date(dateStr);
-      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+      const weekdayNames = ["日","月","火","水","木","金","土"];
+      const weekday = weekdayNames[d.getDay()];
+      const dateLabel = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${weekday}）`;
       let dayData = withDefaults(state.days[dateStr], dateStr);
       
       // ★NEW: 振り返り評価のHTML生成
@@ -2119,7 +2215,26 @@
       headerScore.textContent = avgRating;
 
       const focusSeconds = dayData.focusSeconds || 0;
-      const runningLabel = focusTimer.running ? "集中セッション中…" : "停止中";
+
+      // 残り時間が未設定の場合は現在のモードに応じて初期値を入れる
+      if (!focusTimer.remainingSeconds || focusTimer.remainingSeconds <= 0) {
+        const baseMinutes = focusTimer.mode === "break" ? state.pomodoroBreak : state.pomodoroFocus;
+        focusTimer.remainingSeconds = Math.max(1, baseMinutes * 60);
+        if (!focusTimer.running) {
+          focusTimer.sessionSeconds = 0;
+        }
+      }
+
+      const displaySeconds = focusTimer.remainingSeconds;
+
+      let runningLabel;
+      if (focusTimer.running) {
+        runningLabel = focusTimer.mode === "break" ? "休憩中" : "集中中";
+      } else if (focusTimer.sessionSeconds > 0 && focusTimer.remainingSeconds > 0) {
+        runningLabel = "一時停止中";
+      } else {
+        runningLabel = "待機中";
+      }
 
       // ★NEW: カテゴリ選択ドロップダウンのHTML
       const categorySelectHtml = state.categories.map(c => 
@@ -2144,13 +2259,18 @@
         </div>
         <div class="card">
           <div class="section-title">今日のフォーカス（タイマー）</div>
-          <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-            <div style="flex-grow:1;">
-              <div class="timer-display" id="session-display">${formatMMSS(focusTimer.sessionSeconds)}</div>
-              <div class="muted" id="timer-status" style="font-size:10px;">${runningLabel}</div>
+          <div class="focus-timer-layout">
+            <div class="focus-timer-main">
+              <div class="timer-circle ${focusTimer.running ? (focusTimer.mode === 'break' ? 'break running' : 'running') : ''}">
+                <div class="timer-display" id="session-display">${formatMMSS(displaySeconds)}</div>
+              </div>
+              <div class="muted" id="timer-status" style="font-size:10px; margin-top:4px;">${runningLabel}</div>
+              <div class="muted" style="font-size:10px; margin-top:2px;">
+                サイクル: ${focusTimer.mode === 'break' ? '休憩' : '集中'}
+              </div>
             </div>
-            <div>
-              <div class="timer-display">${formatMMSS(focusSeconds)}</div>
+            <div class="focus-timer-summary">
+              <div class="timer-display timer-display-small">${formatMMSS(focusSeconds)}</div>
               <div class="muted" style="font-size:10px;text-align:right;">累計フォーカス時間</div>
             </div>
           </div>
@@ -2199,48 +2319,70 @@
 
       const displayEl = () => document.getElementById("session-display");
 
+      // フォーカスタイマーの1秒ごとの更新
       function tickTimer() {
-        if (!focusTimer.running || !focusTimer.startTs) return;
-        const now = Date.now();
-        const diffSec = Math.floor((now - focusTimer.startTs) / 1000);
-        focusTimer.sessionSeconds = diffSec;
-        const el = displayEl();
-        if (el) el.textContent = formatMMSS(diffSec);
-      }
-      
-      if (timerIntervalId) {
-        clearInterval(timerIntervalId);
-        timerIntervalId = null;
-      }
-      if (focusTimer.running) {
-        timerIntervalId = setInterval(tickTimer, 1000);
-      } else {
-        const el = displayEl();
-        if (el) el.textContent = formatMMSS(focusTimer.sessionSeconds);
-      }
+        if (!focusTimer.running) return;
 
-      document.getElementById("timer-start-btn").onclick = () => {
-        if (!focusTimer.running) {
-          focusTimer.running = true;
-          focusTimer.startTs = Date.now();
-          focusTimer.sessionSeconds = 0;
-          timerIntervalId = setInterval(tickTimer, 1000);
-          render();
-        } else {
-          focusTimer.running = false;
-          if (timerIntervalId) {
-            clearInterval(timerIntervalId);
-            timerIntervalId = null;
-          }
-          const now = Date.now();
-          focusTimer.sessionSeconds = Math.floor((now - focusTimer.startTs) / 1000);
-          focusTimer.startTs = null;
-          render();
+        // 残り時間がない場合はセグメント完了処理
+        if (focusTimer.remainingSeconds <= 0) {
+          handleSegmentComplete();
+          return;
         }
-      };
 
-      document.getElementById("timer-add-btn").onclick = async () => {
-        if (focusTimer.sessionSeconds <= 0) return;
+        focusTimer.remainingSeconds = Math.max(0, focusTimer.remainingSeconds - 1);
+        focusTimer.sessionSeconds += 1;
+
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+
+        if (focusTimer.remainingSeconds <= 0) {
+          handleSegmentComplete();
+        }
+      }
+
+      // セグメント（集中 / 休憩）の終了処理
+      function handleSegmentComplete() {
+        if (focusTimer.mode === "focus") {
+          // 集中時間が終了したら自動で集計して休憩へ
+          const addSec = focusTimer.sessionSeconds;
+
+          // 手動追加と同じロジックを使って記録する
+          commitFocusSession(addSec);
+
+          // 休憩に遷移
+          focusTimer.mode = "break";
+          focusTimer.sessionSeconds = 0;
+          focusTimer.remainingSeconds = Math.max(1, state.pomodoroBreak * 60);
+          focusTimer.running = true;
+
+          const el = displayEl();
+          if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+
+        } else {
+          // 休憩が終わったら次の集中へ
+          focusTimer.mode = "focus";
+          focusTimer.sessionSeconds = 0;
+          focusTimer.remainingSeconds = Math.max(1, state.pomodoroFocus * 60);
+          focusTimer.running = true;
+
+          const el = displayEl();
+          if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+        }
+
+        // ステータス表示を更新
+        const statusEl = document.getElementById("timer-status");
+        if (statusEl) {
+          if (focusTimer.running) {
+            statusEl.textContent = focusTimer.mode === "break" ? "休憩中" : "集中中";
+          } else {
+            statusEl.textContent = "待機中";
+          }
+        }
+      }
+
+      // 手動 / 自動どちらからも使う記録処理
+      async function commitFocusSession(addSec) {
+        if (!addSec || addSec <= 0) return false;
 
         const labelInput = document.getElementById("focus-label");
         const label = labelInput ? labelInput.value.trim() : "";
@@ -2249,11 +2391,10 @@
         
         if (!categoryId) {
             alert("フォーカス時間の記録先カテゴリを選択してください。");
-            return;
+            return false;
         }
 
         const d = withDefaults(state.days[todayStr], todayStr);
-        const addSec = focusTimer.sessionSeconds;
         
         // --- NEW: Rounding and Timeline update ---
         const totalMinutes = Math.round(addSec / 60); 
@@ -2288,29 +2429,102 @@
         saveDays(state.days);
         
         await saveDailyData(todayStr); 
+        return true;
+      }
+
+      // タイマーの初期表示 / 再描画
+      if (timerIntervalId) {
+        clearInterval(timerIntervalId);
+        timerIntervalId = null;
+      }
+      if (focusTimer.running) {
+        timerIntervalId = setInterval(tickTimer, 1000);
+      }
+      const initialEl = displayEl();
+      if (initialEl) initialEl.textContent = formatMMSS(displaySeconds);
+
+      // スタート / 一時停止
+      document.getElementById("timer-start-btn").onclick = () => {
+        if (!focusTimer.running) {
+          // 開始 or 再開
+          focusTimer.running = true;
+
+          if (!focusTimer.remainingSeconds || focusTimer.remainingSeconds <= 0) {
+            const baseMinutes = focusTimer.mode === "break" ? state.pomodoroBreak : state.pomodoroFocus;
+            focusTimer.remainingSeconds = Math.max(1, baseMinutes * 60);
+            focusTimer.sessionSeconds = 0;
+          }
+
+          if (timerIntervalId) {
+            clearInterval(timerIntervalId);
+            timerIntervalId = null;
+          }
+          timerIntervalId = setInterval(tickTimer, 1000);
+          render();
+        } else {
+          // 一時停止
+          focusTimer.running = false;
+          if (timerIntervalId) {
+            clearInterval(timerIntervalId);
+            timerIntervalId = null;
+          }
+          render();
+        }
+      };
+
+      // 記録に追加（手動）
+      document.getElementById("timer-add-btn").onclick = async () => {
+        if (focusTimer.sessionSeconds <= 0) return;
+
+        const success = await commitFocusSession(focusTimer.sessionSeconds);
+        if (!success) return;
 
         focusTimer.sessionSeconds = 0;
-        const el = displayEl();
-        if (el) el.textContent = formatMMSS(0);
-        render();
-      };
-      
-      document.getElementById("timer-reset-session-btn").onclick = () => {
-        focusTimer.sessionSeconds = 0;
+        // 残り時間は現在モードのデフォルトに戻す
+        const baseMinutes = focusTimer.mode === "break" ? state.pomodoroBreak : state.pomodoroFocus;
+        focusTimer.remainingSeconds = Math.max(1, baseMinutes * 60);
         focusTimer.running = false;
-        focusTimer.startTs = null;
+
         if (timerIntervalId) {
           clearInterval(timerIntervalId);
           timerIntervalId = null;
         }
+
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+        render();
+      };
+      
+      // リセット
+      document.getElementById("timer-reset-session-btn").onclick = () => {
+        focusTimer.sessionSeconds = 0;
+        focusTimer.running = false;
+        focusTimer.mode = "focus";
+        focusTimer.remainingSeconds = Math.max(1, state.pomodoroFocus * 60);
+        if (timerIntervalId) {
+          clearInterval(timerIntervalId);
+          timerIntervalId = null;
+        }
+        const el = displayEl();
+        if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
         render();
       };
 
       document.getElementById("focus-input").onchange = (e) => {
         state.pomodoroFocus = Number(e.target.value);
+        if (!focusTimer.running && focusTimer.mode === "focus") {
+          focusTimer.remainingSeconds = Math.max(1, state.pomodoroFocus * 60);
+          const el = displayEl();
+          if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+        }
       };
       document.getElementById("break-input").onchange = (e) => {
         state.pomodoroBreak = Number(e.target.value);
+        if (!focusTimer.running && focusTimer.mode === "break") {
+          focusTimer.remainingSeconds = Math.max(1, state.pomodoroBreak * 60);
+          const el = displayEl();
+          if (el) el.textContent = formatMMSS(focusTimer.remainingSeconds);
+        }
       };
     }
 
@@ -2562,7 +2776,10 @@
           <div id="recurring-logs-settings">
             ${renderRecurringLogsList()}
           </div>
-          <button class="btn btn-ghost" id="add-recurring-btn" style="margin-top:8px;">＋ 繰り返しログを追加</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:8px;">
+            <button class="btn btn-ghost" id="add-recurring-btn">＋ 繰り返しログを追加</button>
+            <button class="btn btn-primary" id="save-recurring-btn">決定</button>
+          </div>
         </div>
 
         <div class="card">
@@ -2751,13 +2968,13 @@
                   log.days.push(day); 
                   log.days.sort((a,b) => a-b);
               }
-              saveRecurringLogs(state.recurringLogs);
+              // ここでは保存せず、画面だけ更新（「決定」ボタンで保存）
               renderSettings(); 
           }
           if (e.target.matches('.delete-recurring-btn')) {
               const index = Number(e.target.dataset.index);
               state.recurringLogs.splice(index, 1);
-              saveRecurringLogs(state.recurringLogs);
+              // ここでは保存せず、画面だけ更新
               renderSettings();
           }
       });
@@ -2769,9 +2986,18 @@
               startIdx: hmToIndex(9, 0), 
               endIdx: hmToIndex(17, 0) 
           });
-          saveRecurringLogs(state.recurringLogs);
+          // ここでは保存せず、状態だけ更新（「決定」ボタンで保存）
           renderSettings();
       };
+
+      // 「決定」ボタンで初めてローカル＆クラウドに保存
+      const saveRecurringBtn = document.getElementById("save-recurring-btn");
+      if (saveRecurringBtn) {
+          saveRecurringBtn.onclick = () => {
+              saveRecurringLogs(state.recurringLogs);
+              alert("繰り返しログの設定を保存しました。");
+          };
+      }
       
       document.querySelectorAll('.recurring-log-item select[data-type]').forEach(select => {
           const defaultValue = select.dataset.default;
