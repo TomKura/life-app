@@ -1255,6 +1255,7 @@
     // ★★★ END NEW ★★★
 
     
+    
     function loadRecurringLogs() {
       let localLogs = [];
       try {
@@ -1265,7 +1266,8 @@
         localLogs = [];
       }
 
-      // Supabase から繰り返し予定を取得（ローカルが空のときだけクラウドで上書き）
+      // Supabase から繰り返し予定を取得（クラウドを正とするが、より新しいローカル編集がある場合は上書きしない）
+      const fetchStartedAt = Date.now();
       (async () => {
         try {
           const { data, error } = await supabase
@@ -1288,9 +1290,9 @@
             label: row.label || ''
           }));
 
-          // ローカルにすでにデータがある場合は、それを正とする（オフライン編集を優先）
-          if (localLogs && localLogs.length > 0) {
-            console.log("recurring_logs: ローカルデータを優先し、クラウドは読み取りのみ");
+          // もしfetch開始後にローカル編集が行われていたら、クラウドで上書きしない
+          if (typeof state !== "undefined" && state.lastRecurringLocalEditAt && state.lastRecurringLocalEditAt > fetchStartedAt) {
+            console.log("recurring_logs: ローカル編集がクラウドより新しいため、クラウド結果での上書きをスキップ");
             return;
           }
 
@@ -1313,8 +1315,15 @@
       return localLogs;
     }
 
-
     function saveRecurringLogs(logs) {
+      if (!Array.isArray(logs)) logs = [];
+      
+      // state も更新（多端末でのクラウド同期を前提に、常に最新ローカル状態を保持）
+      if (typeof state !== "undefined") {
+        state.recurringLogs = logs;
+        state.lastRecurringLocalEditAt = Date.now();
+      }
+
       // ローカル保存
       try {
         localStorage.setItem(STORAGE_KEY_RECURRING, JSON.stringify(logs));
@@ -1323,7 +1332,7 @@
         console.error("saveRecurringLogs local error", e);
       }
 
-      // Supabase 同期
+      // Supabase 同期（クラウド側を正として他端末に配信させる）
       (async () => {
         try {
           const payloads = (logs || []).map(l => ({
@@ -1351,9 +1360,7 @@
         }
       })();
     }
-
-
-    function defaultDayData(dateStr) {
+function defaultDayData(dateStr) {
       return {
         date: dateStr,
         // ownership: null, // REMOVED
@@ -1433,7 +1440,8 @@
       activeCategoryId: null,
       statsPage: 0,
       pomodoroFocus: 25,
-      pomodoroBreak: 5
+      pomodoroBreak: 5,
+      lastRecurringLocalEditAt: 0
     };
     if (!state.activeCategoryId && state.categories.length) {
       state.activeCategoryId = state.categories[0].id;
