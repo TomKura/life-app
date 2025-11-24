@@ -840,6 +840,13 @@
 }
 
 
+    
+    .cat-type-toggle .cat-type-btn.active {
+      background: var(--accent);
+      color: var(--bg-elevated);
+      border-color: var(--accent);
+    }
+
     .cat-row.dragging {
       opacity: 0.6;
       transform: scale(0.98);
@@ -1000,9 +1007,9 @@
 
     function defaultCategories() {
       return [
-        { id: "study", name: "勉強", color: "#38bdf8" }, 
-        { id: "phone", name: "スマホ", color: "#fb7185" }, 
-        { id: "other", name: "その他", color: "#4ade80" }
+        { id: "study", name: "勉強", color: "#38bdf8", isFixed: false }, 
+        { id: "phone", name: "スマホ", color: "#fb7185", isFixed: false }, 
+        { id: "other", name: "その他", color: "#4ade80", isFixed: false }
       ];
     }
     
@@ -1023,6 +1030,7 @@
             // 旧バージョン互換: budgetSecondsなど不要プロパティを削除し、sortOrderを補完
             localCats = parsed.map((c, idx) => {
               const clone = (c && typeof c === "object") ? { ...c } : { id: `cat_${idx}`, name: `カテゴリ${idx + 1}`, color: "#38bdf8" };
+              if (typeof clone.isFixed !== "boolean") clone.isFixed = false;
               delete clone.budgetSeconds;
               if (typeof clone.sortOrder !== "number") clone.sortOrder = idx;
               return clone;
@@ -1039,7 +1047,7 @@
         try {
           const { data, error } = await supabase
             .from('categories')
-            .select('id, name, color, sort_order')
+            .select('id, name, color, sort_order, is_fixed')
             .order('sort_order', { ascending: true })
             .order('id', { ascending: true });
 
@@ -1056,6 +1064,7 @@
             id: row.id,
             name: row.name,
             color: row.color || '#38bdf8',
+            isFixed: row.is_fixed === true,
             sortOrder: typeof row.sort_order === "number" ? row.sort_order : idx
           })).sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -1112,6 +1121,7 @@
             id: c.id,
             name: c.name,
             color: c.color,
+            is_fixed: c.isFixed === true,
             sort_order: c.sortOrder
           }));
           if (!payloads.length) return;
@@ -1255,7 +1265,7 @@
         localLogs = [];
       }
 
-      // Supabase から繰り返し予定を取得し、クラウド側があればそちらを優先
+      // Supabase から繰り返し予定を取得（ローカルが空のときだけクラウドで上書き）
       (async () => {
         try {
           const { data, error } = await supabase
@@ -1278,6 +1288,12 @@
             label: row.label || ''
           }));
 
+          // ローカルにすでにデータがある場合は、それを正とする（オフライン編集を優先）
+          if (localLogs && localLogs.length > 0) {
+            console.log("recurring_logs: ローカルデータを優先し、クラウドは読み取りのみ");
+            return;
+          }
+
           if (typeof state !== "undefined") {
             state.recurringLogs = cloudLogs;
             try {
@@ -1298,7 +1314,6 @@
     }
 
 
-    
     function saveRecurringLogs(logs) {
       // ローカル保存
       try {
@@ -1784,14 +1799,19 @@
 
       const timeline = Array.isArray(data.timeline) && data.timeline.length === 288 ? data.timeline : Array(288).fill(null);
       
-      // --- NEW: 可処分時間計算 ---
+      // --- NEW: 可処分時間計算（24時間 - 固定カテゴリーの合計時間） ---
       const totalBlocks = 288;
-      const scheduledBlocks = timeline.filter(catId => catId !== null).length;
-      const unscheduledBlocks = totalBlocks - scheduledBlocks;
-      const unscheduledMinutes = unscheduledBlocks * 5;
-      const unscheduledHours = Math.floor(unscheduledMinutes / 60);
-      const unscheduledMinsRemainder = unscheduledMinutes % 60;
-      
+      const totalMinutes = totalBlocks * 5;
+      const fixedBlocks = timeline.filter(catId => {
+        if (!catId) return false;
+        const cat = getCategoryById(catId);
+        return cat && cat.isFixed === true;
+      }).length;
+      const fixedMinutes = fixedBlocks * 5;
+      const disposableMinutes = Math.max(0, totalMinutes - fixedMinutes);
+      const unscheduledHours = Math.floor(disposableMinutes / 60);
+      const unscheduledMinsRemainder = disposableMinutes % 60;
+
       const unscheduledTimeStr = `${unscheduledHours}時間${unscheduledMinsRemainder}分`;
       // --- END NEW ---
       
@@ -1898,7 +1918,7 @@
           <div class="category-chips">${categoryChipsHtml}</div>
           
           <div style="text-align:center; padding: 8px 0; border-bottom: 1px dashed var(--text-muted); margin-bottom:10px; border-radius: 4px;">
-              <span class="muted" style="font-size:11px;">合計: </span>
+              <span class="muted" style="font-size:11px;">可処分時間: </span>
               <span style="font-weight:bold; color:var(--accent);">${unscheduledTimeStr}</span>
           </div>
           
@@ -2714,6 +2734,18 @@
                 <div class="cat-row-longpress-area" data-id="${cat.id}" style="width:12px; font-size:12px; opacity:0.7; user-select:none;">${state.categoryReorderMode ? '||' : ''}</div>
                 <input type="color" class="cat-color-input" data-id="${cat.id}" value="${cat.color}" style="width:30px; height:30px; border:none; padding:0;">
                 <input type="text" class="log-headline-input cat-name-input" data-id="${cat.id}" value="${cat.name}" style="flex-grow:1;">
+                <div class="cat-type-toggle" data-id="${cat.id}" style="display:flex; gap:4px; margin-left:4px; font-size:10px;">
+                  <button type="button" class="btn btn-ghost cat-type-btn ${cat.isFixed ? 'active' : ''}"
+                          data-id="${cat.id}" data-type="fixed"
+                          style="padding:2px 6px; font-size:10px; border-radius:999px; border:1px solid rgba(148,163,184,0.5);">
+                    固定
+                  </button>
+                  <button type="button" class="btn btn-ghost cat-type-btn ${!cat.isFixed ? 'active' : ''}"
+                          data-id="${cat.id}" data-type="variable"
+                          style="padding:2px 6px; font-size:10px; border-radius:999px; border:1px solid rgba(148,163,184,0.3);">
+                    変動
+                  </button>
+                </div>
                 ${state.categoryReorderMode ? `
                   <div style="display:flex; flex-direction:column; gap:4px; margin-left:4px;">
                     <button class="btn btn-ghost cat-move-up-btn" data-id="${cat.id}" style="padding:4px 8px; font-size:12px;">↑</button>
@@ -2769,6 +2801,23 @@
           if (cat) cat.color = e.target.value;
           saveCategories(state.categories);
         });
+
+      // カテゴリー固定/変動トグル
+      document.querySelectorAll('.cat-type-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.dataset.id;
+          const type = e.currentTarget.dataset.type;
+          const cat = getCategoryById(id);
+          if (!cat) return;
+          cat.isFixed = (type === 'fixed');
+          document.querySelectorAll(`.cat-type-btn[data-id="${id}"]`).forEach(b => {
+            const isFixedBtn = (b.dataset.type === 'fixed');
+            if (isFixedBtn === cat.isFixed) b.classList.add('active'); else b.classList.remove('active');
+          });
+          saveCategories(state.categories);
+        });
+      });
+
       });
       
       document.querySelectorAll(".delete-cat-btn").forEach(btn => {
