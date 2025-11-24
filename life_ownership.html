@@ -4,7 +4,7 @@
 <head>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <meta charset="UTF-8" />
-  <title>Life Ownership Prototype v6</title>
+  <title>Life Ownership Prototype v8</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     /* ... 既存のCSS（省略） ... */
@@ -500,7 +500,7 @@
     .btn-ghost {
       background: transparent;
       color: var(--text-muted);
-      border: 1px solid rgba(148,163,184,0.4);
+      border: 1px solid rgba(0, 0, 0, 0);
     }
     .range-row {
       display: flex;
@@ -935,31 +935,115 @@
       ];
     }
     
+    
     function loadCategories() {
+      // まずはローカルのキャッシュを読み込む
+      let localCats;
       try {
         const raw = localStorage.getItem(STORAGE_KEY_CATS);
-        if (!raw) return defaultCategories();
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || !parsed.length) return defaultCategories();
-        
-        return parsed.map(c => {
-          delete c.budgetSeconds; 
-          return c;
-        });
-
+        if (!raw) {
+          localCats = defaultCategories();
+        } else {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed) || !parsed.length) {
+            localCats = defaultCategories();
+          } else {
+            // 旧バージョン互換: budgetSecondsなど不要プロパティを削除
+            localCats = parsed.map(c => {
+              if (c && typeof c === "object") {
+                const clone = { ...c };
+                delete clone.budgetSeconds;
+                return clone;
+              }
+              return c;
+            });
+          }
+        }
       } catch (e) {
-        console.error("loadCategories error", e);
-        return defaultCategories();
+        console.error("loadCategories local error", e);
+        localCats = defaultCategories();
       }
+
+      // 非同期でSupabaseからの最新版を取得し、あればそれを優先して state に反映
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('categories')
+            .select('id, name, color')
+            .order('id', { ascending: true });
+
+          if (error) {
+            console.warn("Supabase categories fetch error:", error.message);
+            return;
+          }
+          if (!data || !data.length) {
+            // クラウド側にデータが無い場合は、ローカルのデフォルトをそのまま使う
+            return;
+          }
+
+          const cloudCats = data.map(row => ({
+            id: row.id,
+            name: row.name,
+            color: row.color || '#38bdf8'
+          }));
+
+          // state 初期化完了後（await 以降）なのでここで state に代入しても安全
+          if (typeof state !== "undefined") {
+            state.categories = cloudCats;
+            // ローカルキャッシュも更新
+            try {
+              localStorage.setItem(STORAGE_KEY_CATS, JSON.stringify(cloudCats));
+            } catch (e) {
+              console.error("saveCategories local (from cloud) error", e);
+            }
+            // 画面を再描画（カレンダー/Today/Settings あたりで影響）
+            if (state.currentTab === 'calendar' || state.currentTab === 'today' || state.currentTab === 'settings') {
+              render();
+            }
+          }
+        } catch (e) {
+          console.error("Supabase categories fetch unexpected error:", e);
+        }
+      })();
+
+      return localCats;
     }
 
+
+    
     function saveCategories(cats) {
+      // ローカルキャッシュを更新
       try {
         localStorage.setItem(STORAGE_KEY_CATS, JSON.stringify(cats));
       } catch (e) {
-        console.error("saveCategories error", e);
+        console.error("saveCategories local error", e);
       }
+
+      // Supabaseにも同期（非同期で fire-and-forget）
+      (async () => {
+        try {
+          const payloads = (cats || []).map(c => ({
+            id: c.id,
+            name: c.name,
+            color: c.color
+          }));
+          if (!payloads.length) return;
+
+          const { error } = await supabase
+            .from('categories')
+            .upsert(payloads, { onConflict: 'id' });
+
+          if (error) {
+            console.error("saveCategories Supabase error:", error.message);
+          } else {
+            console.log(`Supabase categories updated: ${payloads.length}件`);
+          }
+        } catch (e) {
+          console.error("saveCategories Supabase unexpected error:", e);
+        }
+      })();
     }
+
 
     // ★★★ NEW: 振り返り基準のロード/セーブ ★★★
     function defaultReviewCriteria() {
@@ -970,48 +1054,201 @@
       ];
     }
 
+    
     function loadReviewCriteria() {
+      let criteria;
       try {
         const raw = localStorage.getItem(STORAGE_KEY_CRITERIA);
-        if (!raw) return defaultReviewCriteria();
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || parsed.length === 0) return defaultReviewCriteria();
-        while(parsed.length < 3) parsed.push({ id: `c${parsed.length + 1}`, name: `基準${parsed.length + 1}` });
-        parsed.splice(3); 
-        return parsed;
+        if (!raw) {
+          criteria = defaultReviewCriteria();
+        } else {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed) || parsed.length === 0) {
+            criteria = defaultReviewCriteria();
+          } else {
+            criteria = parsed.slice(0, 3);
+            while (criteria.length < 3) {
+              criteria.push({ id: `c${criteria.length + 1}`, name: `基準${criteria.length + 1}` });
+            }
+          }
+        }
       } catch (e) {
-        console.error("loadReviewCriteria error", e);
-        return defaultReviewCriteria();
+        console.error("loadReviewCriteria local error", e);
+        criteria = defaultReviewCriteria();
       }
+
+      // Supabase からの同期（非同期）。日々の振り返り基準を全端末で共通化。
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('review_criteria')
+            .select('id, name, sort_order')
+            .order('sort_order', { ascending: true });
+
+          if (error) {
+            console.warn("Supabase review_criteria fetch error:", error.message);
+            return;
+          }
+          if (!data || !data.length) return;
+
+          const cloud = data.map((row, idx) => ({
+            id: row.id || `c${idx + 1}`,
+            name: row.name || `基準${idx + 1}`
+          }));
+          while (cloud.length < 3) {
+            cloud.push({ id: `c${cloud.length + 1}`, name: `基準${cloud.length + 1}` });
+          }
+          cloud.splice(3);
+
+          if (typeof state !== "undefined") {
+            state.reviewCriteria = cloud;
+            try {
+              localStorage.setItem(STORAGE_KEY_CRITERIA, JSON.stringify(cloud));
+            } catch (e) {
+              console.error("saveReviewCriteria local (from cloud) error", e);
+            }
+            if (state.currentTab === 'today' || state.currentTab === 'calendar' || state.currentTab === 'settings') {
+              render();
+            }
+          }
+        } catch (e) {
+          console.error("Supabase review_criteria fetch unexpected error:", e);
+        }
+      })();
+
+      return criteria;
     }
 
+
+    
     function saveReviewCriteria(criteria) {
+      // ローカル更新
       try {
         localStorage.setItem(STORAGE_KEY_CRITERIA, JSON.stringify(criteria));
       } catch (e) {
-        console.error("saveReviewCriteria error", e);
+        console.error("saveReviewCriteria local error", e);
       }
+
+      // Supabase へ同期
+      (async () => {
+        try {
+          const payloads = (criteria || []).map((c, index) => ({
+            id: c.id || `c${index + 1}`,
+            name: c.name,
+            sort_order: index
+          }));
+          if (!payloads.length) return;
+
+          const { error } = await supabase
+            .from('review_criteria')
+            .upsert(payloads, { onConflict: 'id' });
+
+          if (error) {
+            console.error("saveReviewCriteria Supabase error:", error.message);
+          } else {
+            console.log(`Supabase review_criteria updated: ${payloads.length}件`);
+          }
+        } catch (e) {
+          console.error("saveReviewCriteria Supabase unexpected error:", e);
+        }
+      })();
     }
+
     // ★★★ END NEW ★★★
 
+    
     function loadRecurringLogs() {
+      let localLogs = [];
       try {
         const raw = localStorage.getItem(STORAGE_KEY_RECURRING);
-        return raw ? JSON.parse(raw) : [];
+        localLogs = raw ? JSON.parse(raw) : [];
       } catch (e) {
-        console.error("loadRecurringLogs error", e);
-        return [];
+        console.error("loadRecurringLogs local error", e);
+        localLogs = [];
       }
+
+      // Supabase から繰り返し予定を取得し、クラウド側があればそちらを優先
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('recurring_logs')
+            .select('id, cat_id, days, start_idx, end_idx, label')
+            .order('id', { ascending: true });
+
+          if (error) {
+            console.warn("Supabase recurring_logs fetch error:", error.message);
+            return;
+          }
+          if (!data) return;
+
+          const cloudLogs = data.map(row => ({
+            id: row.id,
+            catId: row.cat_id,
+            days: row.days || [],
+            startIdx: row.start_idx,
+            endIdx: row.end_idx,
+            label: row.label || ''
+          }));
+
+          if (typeof state !== "undefined") {
+            state.recurringLogs = cloudLogs;
+            try {
+              localStorage.setItem(STORAGE_KEY_RECURRING, JSON.stringify(cloudLogs));
+            } catch (e) {
+              console.error("saveRecurringLogs local (from cloud) error", e);
+            }
+            if (state.currentTab === 'calendar' || state.currentTab === 'settings') {
+              render();
+            }
+          }
+        } catch (e) {
+          console.error("Supabase recurring_logs fetch unexpected error:", e);
+        }
+      })();
+
+      return localLogs;
     }
 
+
+    
     function saveRecurringLogs(logs) {
+      // ローカル保存
       try {
         localStorage.setItem(STORAGE_KEY_RECURRING, JSON.stringify(logs));
         console.log("ローカルストレージに繰り返しログを保存しました。");
       } catch (e) {
-        console.error("saveRecurringLogs error", e);
+        console.error("saveRecurringLogs local error", e);
       }
+
+      // Supabase 同期
+      (async () => {
+        try {
+          const payloads = (logs || []).map(l => ({
+            id: l.id,
+            cat_id: l.catId,
+            days: l.days,
+            start_idx: l.startIdx,
+            end_idx: l.endIdx,
+            label: l.label || ''
+          }));
+          // 空の場合は削除でもよいが、とりあえず何もしない
+          if (!payloads.length) return;
+
+          const { error } = await supabase
+            .from('recurring_logs')
+            .upsert(payloads, { onConflict: 'id' });
+
+          if (error) {
+            console.error("saveRecurringLogs Supabase error:", error.message);
+          } else {
+            console.log(`Supabase recurring_logs updated: ${payloads.length}件`);
+          }
+        } catch (e) {
+          console.error("saveRecurringLogs Supabase unexpected error:", e);
+        }
+      })();
     }
+
 
     function defaultDayData(dateStr) {
       return {
