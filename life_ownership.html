@@ -1288,6 +1288,12 @@
             label: row.label || ''
           }));
 
+          // ローカルにすでにデータがある場合は、それを正とする（オフライン編集を優先）
+          if (localLogs && localLogs.length > 0) {
+            console.log("recurring_logs: ローカルデータを優先し、クラウドは読み取りのみ");
+            return;
+          }
+
           if (typeof state !== "undefined") {
             state.recurringLogs = cloudLogs;
             try {
